@@ -11,6 +11,7 @@ import {
 import { resolveRoute } from './routing/resolve-route.js';
 import { resolveSessionStorePath, upsertSessionMeta } from './sessions/store.js';
 import { loadGatewayConfig, type GatewayConfig } from './config.js';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../model/llm.js';
 import { runAgentForMessage, isSessionRunning, enqueueForSession } from './agent-runner.js';
 import { cleanMarkdownForWhatsApp } from './utils.js';
 import { startCronRunner } from '../cron/runner.js';
@@ -159,8 +160,8 @@ async function handleInbound(cfg: GatewayConfig, inbound: WhatsAppInboundMessage
     }
 
     console.log(`Processing message with agent...`);
-    const model = getSetting('modelId', 'gpt-5.5') as string;
-    const modelProvider = getSetting('provider', 'openai') as string;
+    const model = getSetting('modelId', DEFAULT_MODEL) as string;
+    const modelProvider = getSetting('provider', DEFAULT_PROVIDER) as string;
 
     // If agent is already running for this session, enqueue for mid-run injection
     if (isSessionRunning(route.sessionKey)) {
@@ -269,8 +270,8 @@ async function handleTelegramInbound(
     await startTypingLoop();
 
     const query = inbound.body;
-    const model = getSetting('modelId', 'gpt-5.5') as string;
-    const modelProvider = getSetting('provider', 'openai') as string;
+    const model = getSetting('modelId', DEFAULT_MODEL) as string;
+    const modelProvider = getSetting('provider', DEFAULT_PROVIDER) as string;
 
     if (isSessionRunning(route.sessionKey)) {
       debugLog(`[telegram] agent busy for session=${route.sessionKey}, enqueueing`);

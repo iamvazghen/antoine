@@ -1,6 +1,8 @@
 # Antoine 🤖
 
-Antoine is an autonomous financial research agent that thinks, plans, and learns as it works. It performs analysis using task planning, self-reflection, and real-time market data. Think Claude Code, but built specifically for financial research.
+**Antoine** is a self-hosted, autonomous financial-research analyst that lives in your terminal — and, when you want, in your pocket via WhatsApp and Telegram. It decomposes a question into a research plan, pulls live data across equities, crypto, foreign exchange and macroeconomics, checks its own work, and returns a confident, source-cited answer.
+
+Antoine is **local-first**: it defaults to a free, locally-proxied model (FreeLLMAPI auto-routing) so you can run it end-to-end without signing up for a single hosted LLM, then graduate to OpenAI / Anthropic / Google / xAI / DeepSeek / OpenRouter whenever you like. Install it once and call `antoine` from any folder.
 
 <img width="665" height="452" alt="Screenshot 2026-04-02 at 4 16 57 PM" src="https://github.com/user-attachments/assets/02418111-5f48-4a66-be5d-dc9bf9806284" />
 
@@ -38,10 +40,12 @@ Antoine takes complex financial questions and turns them into clear, step-by-ste
 - **Intelligent Task Planning**: Automatically decomposes complex queries into structured research steps
 - **Autonomous Execution**: Selects and executes the right tools to gather financial data
 - **Self-Validation**: Checks its own work and iterates until tasks are complete
-- **Real-Time Financial Data**: Access to income statements, balance sheets, and cash flow statements
+- **Broad Market Coverage**: Equities (statements, ratios, filings, insider & institutional activity), crypto, **foreign-exchange rates** (ECB), and **macroeconomic indicators** (World Bank) — the last two need no API key
+- **Local-First Models**: FreeLLMAPI auto-routing by default; swap to any major hosted provider or Ollama from the in-app `/model` menu
+- **Talk to it anywhere**: interactive CLI, plus optional WhatsApp and Telegram gateways
+- **Persistent Memory**: learns your preferences and recalls past research across sessions
 - **Safety Features**: Built-in loop detection and step limits to prevent runaway execution
 
-[![Twitter Follow](https://img.shields.io/twitter/follow/virattt?style=social)](https://twitter.com/virattt) [![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?style=social&logo=discord)](https://discord.gg/jpGHv2XB6T)
 
 <img width="1042" height="638" alt="Screenshot 2026-02-18 at 12 21 25 PM" src="https://github.com/user-attachments/assets/2a6334f9-863f-4bd2-a56f-923e42f4711e" />
 
@@ -49,9 +53,10 @@ Antoine takes complex financial questions and turns them into clear, step-by-ste
 ## ✅ Prerequisites
 
 - [Bun](https://bun.com) runtime (v1.0 or higher)
-- OpenAI API key (get [here](https://platform.openai.com/api-keys))
-- Financial Datasets API key (get [here](https://financialdatasets.ai))
-- Exa API key (get [here](https://exa.ai)) - optional, for web search
+- An LLM — **no key required by default**: Antoine routes through the FreeLLMAPI proxy at `http://localhost:3001/v1`. Just make sure that proxy is running, or set any hosted provider key (OpenAI, Anthropic, Google, xAI, DeepSeek, OpenRouter) and pick it from the in-app `/model` menu.
+- Financial Datasets API key (get [here](https://financialdatasets.ai)) — for equities data
+- Exa API key (get [here](https://exa.ai)) — optional, for web search
+- FX rates (ECB) and macroeconomic indicators (World Bank) work with **no key**
 
 #### Installing Bun
 
@@ -90,23 +95,28 @@ bun install
 # Copy the example environment file
 cp env.example .env
 
-# Edit .env and add your API keys (if using cloud providers)
+# Default LLM: FreeLLMAPI auto-routing (no per-provider key needed)
+# FREELLMAPI_API_KEY=your-freellmapi-api-key
+# FREELLMAPI_BASE_URL=http://localhost:3001/v1
+
+# ...or use a hosted provider and pick it from the /model menu
 # OPENAI_API_KEY=your-openai-api-key
 # ANTHROPIC_API_KEY=your-anthropic-api-key (optional)
 # GOOGLE_API_KEY=your-google-api-key (optional)
-# XAI_API_KEY=your-xai-api-key (optional)
-# OPENROUTER_API_KEY=your-openrouter-api-key (optional)
 
 # Institutional-grade market data for agents
 # FINANCIAL_DATASETS_API_KEY=your-financial-datasets-api-key
 
-# (Optional) If using Ollama locally
-# OLLAMA_BASE_URL=http://127.0.0.1:11434
+# Chat over messaging apps (optional)
+# TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 
-# Web Search (Exa preferred, Tavily fallback)
+# Web Search (Exa preferred, then Perplexity/Tavily/LangSearch)
 # EXASEARCH_API_KEY=your-exa-api-key
-# TAVILY_API_KEY=your-tavily-api-key
 ```
+
+`env.example` also documents an optional **integrations roadmap** — additional
+market-data, crypto, real-estate and central-bank (US/EU/China) data providers
+you can wire in by adding a key.
 
 ## 🚀 How to Run
 
@@ -119,6 +129,29 @@ Or with watch mode for development:
 ```bash
 bun dev
 ```
+
+### Install the global `antoine` command
+
+So you can launch Antoine from **any folder**, a global launcher (`antoine`) is provided.
+
+- **Windows** — a launcher is installed at `%AppData%\npm\antoine.cmd` (that folder is already on your PATH). Open a new terminal and run `antoine` from anywhere.
+- **macOS/Linux** — add a shim to a directory on your PATH, e.g.:
+  ```bash
+  printf '#!/usr/bin/env bash\ncd "<path-to-antoine>" && exec bun run src/index.tsx "$@"\n' | sudo tee /usr/local/bin/antoine
+  sudo chmod +x /usr/local/bin/antoine
+  ```
+
+Commands:
+
+```bash
+antoine            # launch the interactive CLI (this is how you start the product)
+antoine gateway    # start the messaging gateway (WhatsApp + Telegram)
+antoine telegram   # configure the Telegram bot
+antoine login      # link a WhatsApp account
+```
+
+> Antoine always runs from its install directory, so your API keys (`.env`) and
+> data (`.antoine/`) are found regardless of which folder you launched it from.
 
 ## 📊 How to Evaluate
 

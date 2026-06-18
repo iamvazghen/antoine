@@ -1,26 +1,28 @@
 # Repository Guidelines
 
-- Repo: https://github.com/virattt/antoine
-- Antoine is a CLI-based AI agent for deep financial research, built with TypeScript, Ink (React for CLI), and LangChain.
+- Repo: https://github.com/iamvazghen/antoine
+- Antoine is a CLI-based AI agent for deep financial research, built with TypeScript, `@mariozechner/pi-tui` (terminal UI), and LangChain.
+- Reachable three ways: the interactive CLI, and optional WhatsApp + Telegram gateways.
 
 ## Project Structure
 
 - Source code: `src/`
   - Agent core: `src/agent/` (agent loop, prompts, scratchpad, token counting, types)
-  - CLI interface: `src/cli.tsx` (Ink/React), entry point: `src/index.tsx`
-  - Components: `src/components/` (Ink UI components)
-  - Hooks: `src/hooks/` (React hooks for agent runner, model selection, input history)
-  - Model/LLM: `src/model/llm.ts` (multi-provider LLM abstraction)
-  - Tools: `src/tools/` (financial search, web search, browser, skill tool)
-  - Tool descriptions: `src/tools/descriptions/` (rich descriptions injected into system prompt)
-  - Finance tools: `src/tools/finance/` (prices, fundamentals, filings, insider trades, etc.)
-  - Search tools: `src/tools/search/` (Exa preferred, Tavily fallback)
+  - CLI interface: `src/cli.ts` (pi-tui), entry point: `src/index.tsx`
+  - Components: `src/components/` (pi-tui UI components, incl. `intro.ts` banner)
+  - Controllers: `src/controllers/` (agent runner, model/search selection, input history)
+  - Providers: `src/providers.ts` (provider registry); Model/LLM: `src/model/llm.ts`
+  - Tools: `src/tools/` (finance, search, browser, fetch, memory, cron, subagent, skill)
+  - Finance tools: `src/tools/finance/` (prices, fundamentals, filings, insider trades, FX rates, macro indicators, etc.)
+  - Search tools: `src/tools/search/` (Exa -> Perplexity -> Tavily -> LangSearch)
+  - Gateway/channels: `src/gateway/` (WhatsApp + Telegram)
   - Browser: `src/tools/browser/` (Playwright-based web scraping)
   - Skills: `src/skills/` (SKILL.md-based extensible workflows, e.g. DCF valuation)
   - Utils: `src/utils/` (env, config, caching, token estimation, markdown tables)
   - Evals: `src/evals/` (LangSmith evaluation runner with Ink UI)
-- Config: `.antoine/settings.json` (persisted model/provider selection)
+- Config: `.antoine/settings.json` (persisted model/provider selection), `.antoine/gateway.json` (channels)
 - Environment: `.env` (API keys; see `env.example`)
+- Global launcher: `antoine` (runs the CLI from any folder); see README "How to Run"
 - Scripts: `scripts/release.sh`
 
 ## Build, Test, and Development Commands
@@ -45,21 +47,35 @@
 
 ## LLM Providers
 
-- Supported: OpenAI (default), Anthropic, Google, xAI (Grok), OpenRouter, Ollama (local).
-- Default model: `gpt-5.5`. Provider detection is prefix-based (`claude-` -> Anthropic, `gemini-` -> Google, etc.).
-- Fast models for lightweight tasks: see `FAST_MODELS` map in `src/model/llm.ts`.
+- Single source of truth for provider metadata: `src/providers.ts` (`PROVIDERS`). Factories live in `src/model/llm.ts` (`MODEL_FACTORIES`).
+- Supported: FreeLLMAPI (default), OpenAI, Anthropic, Google, xAI (Grok), Moonshot, DeepSeek, OpenRouter, Ollama (local).
+- **Default model: `freellmapi:auto`** (provider `freellmapi`) — an OpenAI-compatible local proxy at `FREELLMAPI_BASE_URL` (default `http://localhost:3001/v1`) that auto-routes to a free model. See `DEFAULT_PROVIDER`/`DEFAULT_MODEL` in `src/model/llm.ts`.
+- Provider detection is prefix-based (`claude-` -> Anthropic, `gemini-` -> Google, `freellmapi:` -> FreeLLMAPI, etc.); see `resolveProvider`.
+- Fast model per provider: `fastModel` field in `src/providers.ts`.
 - Anthropic uses explicit `cache_control` on system prompt for prompt caching cost savings.
-- Users switch providers/models via `/model` command in the CLI.
+- Users switch providers/models via the `/model` command in the CLI.
 
 ## Tools
 
-- `financial_search`: primary tool for all financial data queries (prices, metrics, filings). Delegates to multiple sub-tools internally.
-- `financial_metrics`: direct metric lookups (revenue, market cap, etc.).
+- `get_financials`: financial statements, ratios, and metrics (multi-company/multi-metric in one call).
+- `get_market_data`: stock/crypto prices, company news, insider trades, institutional holdings (router meta-tool).
 - `read_filings`: SEC filing reader for 10-K, 10-Q, 8-K documents.
-- `web_search`: general web search (Exa if `EXASEARCH_API_KEY` set, else Tavily if `TAVILY_API_KEY` set).
-- `browser`: Playwright-based web scraping for reading pages the agent discovers.
+- `stock_screener`: screen stocks by financial criteria (P/E, growth, margins, etc.).
+- `get_fx_rates`: foreign-exchange (currency) rates via ECB/Frankfurter — **no key required**.
+- `get_economic_indicators`: macroeconomic indicators (GDP, inflation, unemployment, rates) via World Bank — **no key required**.
+- `web_search`: general web search; fallback chain Exa -> Perplexity -> Tavily -> LangSearch (whichever keys are set).
+- `web_fetch` / `browser`: fetch-and-summarize and Playwright-based interactive scraping.
+- `x_search`: X/Twitter search (requires `X_BEARER_TOKEN`).
 - `skill`: invokes SKILL.md-defined workflows (e.g. DCF valuation). Each skill runs at most once per query.
+- Memory: `memory_search` / `memory_get` / `memory_update`. Scheduling: `cron`, `heartbeat`. Sub-agents: `spawn_subagent`.
 - Tool registry: `src/tools/registry.ts`. Tools are conditionally included based on env vars.
+
+## Channels (Gateway)
+
+- Gateway entry: `src/gateway/index.ts` (`run` | `login` | `telegram`). Bootstrap: `src/gateway/gateway.ts`.
+- Channels under `src/gateway/channels/`: `whatsapp/` (Baileys) and `telegram/` (Bot API long-polling).
+- Add a channel by implementing `ChannelPlugin` (`channels/types.ts`) and registering a manager in `startGateway`.
+- Config + per-account resolution: `src/gateway/config.ts` (`.antoine/gateway.json`).
 
 ## Skills
 
@@ -78,11 +94,14 @@
 
 ## Environment Variables
 
-- LLM keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`
+- LLM (default): `FREELLMAPI_API_KEY`, `FREELLMAPI_BASE_URL`
+- LLM (hosted): `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `MOONSHOT_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`
 - Ollama: `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
-- Finance: `FINANCIAL_DATASETS_API_KEY`
-- Search: `EXASEARCH_API_KEY` (preferred), `TAVILY_API_KEY` (fallback)
+- Finance: `FINANCIAL_DATASETS_API_KEY` (FX rates and macro indicators need no key)
+- Search: `EXASEARCH_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `LANGSEARCH_API_KEY`
+- Social/messaging: `X_BEARER_TOKEN`, `TELEGRAM_BOT_TOKEN`
 - Tracing: `LANGSMITH_API_KEY`, `LANGSMITH_ENDPOINT`, `LANGSMITH_PROJECT`, `LANGSMITH_TRACING`
+- See `env.example` for the optional integrations roadmap (extra market/crypto/real-estate/central-bank providers).
 - Never commit `.env` files or real API keys.
 
 ## Version & Release

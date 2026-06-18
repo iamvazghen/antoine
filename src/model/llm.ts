@@ -15,8 +15,11 @@ import { logger } from '@/utils';
 import { classifyError, isNonRetryableError } from '@/utils/errors';
 import { resolveProvider, getProviderById } from '@/providers';
 
-export const DEFAULT_PROVIDER = 'openai';
-export const DEFAULT_MODEL = 'gpt-5.5';
+// FreeLLMAPI auto-routing is the default: the local proxy ignores the model id
+// and routes to whichever free model is available, so 'freellmapi:auto' is a
+// stable default that requires no per-provider API key.
+export const DEFAULT_PROVIDER = 'freellmapi';
+export const DEFAULT_MODEL = 'freellmapi:auto';
 
 /**
  * Gets the fast model variant for the given provider.
