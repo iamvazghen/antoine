@@ -13,6 +13,7 @@ Antoine is an autonomous financial research agent that thinks, plans, and learns
 - [📊 How to Evaluate](#-how-to-evaluate)
 - [🐛 How to Debug](#-how-to-debug)
 - [📱 How to Use with WhatsApp](#-how-to-use-with-whatsapp)
+- [✈️ How to Use with Telegram](#️-how-to-use-with-telegram)
 - [🤝 How to Contribute](#-how-to-contribute)
 - [📄 License](#-license)
 
@@ -75,7 +76,7 @@ bun --version
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/virattt/antoine.git
+git clone https://github.com/iamvazghen/antoine.git
 cd antoine
 ```
 
@@ -175,6 +176,23 @@ bun run gateway
 Then open WhatsApp, go to your own chat (message yourself), and ask Antoine a question.
 
 For detailed setup instructions, configuration options, and troubleshooting, see the [WhatsApp Gateway README](src/gateway/channels/whatsapp/README.md).
+
+## ✈️ How to Use with Telegram
+
+Chat with Antoine through Telegram. First create a bot with [@BotFather](https://t.me/BotFather) to get a bot token, then:
+
+```bash
+# Configure the Telegram bot (paste the BotFather token, set who may DM it)
+bun run gateway:telegram
+
+# Start the gateway
+bun run gateway
+```
+
+Alternatively, set `TELEGRAM_BOT_TOKEN` in your `.env` and add allowed senders under
+`channels.telegram` in `.antoine/gateway.json`. By default DMs require an allowlist
+(numeric Telegram user ids or `@usernames`, or `*` for anyone), and group messages
+are answered only when the bot is mentioned or replied to.
 
 ## 🤝 How to Contribute
 
