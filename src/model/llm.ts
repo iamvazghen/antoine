@@ -362,8 +362,17 @@ export async function* streamLlmWithMessages(
   options: CallLlmWithMessagesOptions = {},
 ): AsyncGenerator<AIMessageChunk, void> {
   const { model = DEFAULT_MODEL, tools, signal } = options;
+  const provider = resolveProvider(model);
 
-  const llm = getChatModel(model, true);
+  // Some OpenAI-compatible proxies (e.g. FreeLLMAPI) emit streaming tool-call
+  // deltas WITHOUT the `index` field LangChain needs to accumulate them, which
+  // silently drops every tool call (the agent then has nothing to act on and
+  // returns an empty answer). For those providers, fall back to a single
+  // non-streaming invoke — which parses tool calls correctly — and yield the
+  // result as one chunk so the agent loop is unaffected.
+  const useStreaming = provider.id !== 'freellmapi';
+
+  const llm = getChatModel(model, useStreaming);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let runnable: Runnable<any, any> = llm;
@@ -373,11 +382,24 @@ export async function* streamLlmWithMessages(
   }
 
   const invokeOpts = signal ? { signal } : undefined;
-  const provider = resolveProvider(model);
 
   const finalMessages = provider.id === 'anthropic'
     ? annotateSystemMessageForCaching(messages)
     : messages;
+
+  if (!useStreaming) {
+    const result = (await runnable.invoke(finalMessages, invokeOpts)) as AIMessage;
+    yield new AIMessageChunk({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      content: result.content as any,
+      tool_calls: result.tool_calls,
+      additional_kwargs: result.additional_kwargs,
+      response_metadata: result.response_metadata,
+      usage_metadata: result.usage_metadata,
+      id: result.id,
+    });
+    return;
+  }
 
   const stream = await runnable.stream(finalMessages, invokeOpts);
 
