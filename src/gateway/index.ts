@@ -10,6 +10,7 @@ import {
   type GatewayConfig,
 } from './config.js';
 import { loginWhatsApp } from './channels/whatsapp/login.js';
+import { getBotInfo } from './channels/telegram/index.js';
 import { startGateway } from './gateway.js';
 
 // Suppress noisy Baileys Signal protocol session logs
@@ -39,9 +40,9 @@ async function promptSetupMode(cfg: GatewayConfig, linkedPhone: string): Promise
     console.log('');
     console.log(`Linked phone: ${linkedPhone}`);
     console.log('');
-    console.log('How will you use Dexter with WhatsApp?');
-    console.log('  1) Self-chat  — message yourself to talk to Dexter');
-    console.log('  2) Bot phone  — this is a dedicated Dexter phone, others message it');
+    console.log('How will you use Antoine with WhatsApp?');
+    console.log('  1) Self-chat  — message yourself to talk to Antoine');
+    console.log('  2) Bot phone  — this is a dedicated Antoine phone, others message it');
 
     let mode = '';
     while (mode !== '1' && mode !== '2') {
@@ -57,7 +58,7 @@ async function promptSetupMode(cfg: GatewayConfig, linkedPhone: string): Promise
 
     // Bot mode: collect allowed sender phone numbers
     console.log('');
-    console.log('Enter the phone number(s) allowed to message Dexter (E.164 format, e.g. +15551234567).');
+    console.log('Enter the phone number(s) allowed to message Antoine (E.164 format, e.g. +15551234567).');
     console.log('Separate multiple numbers with commas, or type * to allow anyone.');
 
     let phones: string[] = [];
@@ -92,9 +93,73 @@ async function promptSetupMode(cfg: GatewayConfig, linkedPhone: string): Promise
   }
 }
 
+async function promptTelegramSetup(cfg: GatewayConfig): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log('');
+    console.log('Telegram setup — create a bot with @BotFather and paste its token below.');
+    const envToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    let token = '';
+    while (!token) {
+      const prompt = envToken
+        ? `Bot token [press Enter to use TELEGRAM_BOT_TOKEN]: `
+        : 'Bot token: ';
+      const input = (await rl.question(prompt)).trim();
+      token = input || envToken || '';
+      if (!token) console.log('A bot token is required.');
+    }
+
+    // Validate the token before persisting.
+    try {
+      const info = await getBotInfo(token);
+      console.log(`Connected to @${info.username ?? info.id}.`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.log(`Could not validate token: ${msg}`);
+      return false;
+    }
+
+    console.log('');
+    console.log('Who may DM the bot? Enter Telegram numeric user id(s) or @username(s),');
+    console.log('comma-separated, or * to allow anyone.');
+    let allowFrom: string[] = [];
+    while (allowFrom.length === 0) {
+      const input = (await rl.question('Allowed sender(s): ')).trim();
+      if (!input) continue;
+      allowFrom = input === '*' ? ['*'] : input.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    const accountId = cfg.gateway.accountId ?? 'default';
+    cfg.channels.telegram.enabled = true;
+    cfg.channels.telegram.accounts[accountId] = {
+      enabled: true,
+      botToken: token,
+      allowFrom,
+      groupPolicy: 'disabled',
+      groupAllowFrom: [],
+    };
+    cfg.channels.telegram.allowFrom = allowFrom;
+    return true;
+  } finally {
+    rl.close();
+  }
+}
+
 async function run(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0] ?? 'run';
+
+  if (command === 'telegram') {
+    const cfg = loadGatewayConfig();
+    const ok = await promptTelegramSetup(cfg);
+    if (ok) {
+      const configPath = getGatewayConfigPath();
+      saveGatewayConfig(cfg);
+      console.log(`Saved gateway config to ${configPath}`);
+      console.log('Run `npm run gateway` to start receiving Telegram messages.');
+    }
+    return;
+  }
 
   if (command === 'login') {
     const cfg = loadGatewayConfig();
@@ -124,7 +189,7 @@ async function run(): Promise<void> {
   }
 
   const server = await startGateway();
-  console.log('Dexter gateway running. Press Ctrl+C to stop.');
+  console.log('Antoine gateway running. Press Ctrl+C to stop.');
 
   const shutdown = async () => {
     await server.stop();

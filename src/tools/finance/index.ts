@@ -11,4 +11,10 @@ export { createGetFinancials } from './get-financials.js';
 export { createGetMarketData } from './get-market-data.js';
 export { createReadFilings } from './read-filings.js';
 export { createScreenStocks } from './screen-stocks.js';
+export {
+  getFxRates,
+  FX_RATES_DESCRIPTION,
+  getEconomicIndicators,
+  ECONOMIC_INDICATORS_DESCRIPTION,
+} from './markets.js';
 

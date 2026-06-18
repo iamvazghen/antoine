@@ -12,7 +12,7 @@ import {
   getProviderDisplayName,
   getSearchProviderDisplayName,
 } from './utils/env.js';
-import { dexterPath } from './utils/paths.js';
+import { antoinePath } from './utils/paths.js';
 import { defaultQueue } from './utils/message-queue.js';
 import { logger } from './utils/logger.js';
 import {
@@ -357,7 +357,7 @@ export async function runCli() {
 
   const HELP_TEXT = `Keyboard Shortcuts
   esc          Interrupt query / clear input
-  ctrl+c       Exit Dexter
+   ctrl+c       Exit Antoine
   /model       Switch LLM provider and model
   /search      Choose preferred web search provider
   /rules       Show research rules
@@ -374,7 +374,7 @@ export async function runCli() {
         break;
       case 'rules': {
         try {
-          const rulesContent = await readFile(dexterPath('RULES.md'), 'utf-8');
+          const rulesContent = await readFile(antoinePath('RULES.md'), 'utf-8');
           chatLog.addChild(new Spacer(1));
           chatLog.addChild(new Text(theme.muted('Research Rules:'), 0, 0));
           chatLog.addChild(new Text(rulesContent, 0, 0));
@@ -393,7 +393,7 @@ export async function runCli() {
         await agentRunner.runQuery('Show me what you know about me from memory. Use memory_search and memory_get.');
         break;
       case 'heartbeat':
-        await agentRunner.runQuery('Show me my current heartbeat checklist from .dexter/HEARTBEAT.md');
+        await agentRunner.runQuery('Show me my current heartbeat checklist from .antoine/HEARTBEAT.md');
         break;
       case 'history': {
         const messages = modelSelection.inMemoryChatHistory.getMessages();
@@ -713,7 +713,7 @@ export async function runCli() {
       );
       showScreenView(
         'Select web search provider',
-        'Dexter tries your preferred provider first and falls back to the others.',
+        'Antoine tries your preferred provider first and falls back to the others.',
         selector,
         'Enter to confirm · esc to exit',
         selector,

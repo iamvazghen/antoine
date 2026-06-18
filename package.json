@@ -1,17 +1,18 @@
 {
-  "name": "dexter-ts",
+  "name": "antoine-ts",
   "version": "1.0.0",
-  "description": "Dexter - AI agent for deep financial research.",
+  "description": "Antoine - AI agent for deep financial research.",
   "type": "module",
   "main": "src/index.tsx",
   "bin": {
-    "dexter-ts": "./src/index.tsx"
+    "antoine-ts": "./src/index.tsx"
   },
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun --watch run src/index.tsx",
     "gateway": "tsx src/gateway/index.ts run",
     "gateway:login": "tsx src/gateway/index.ts login",
+    "gateway:telegram": "tsx src/gateway/index.ts telegram",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:watch": "bun test --watch",

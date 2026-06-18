@@ -8,10 +8,10 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { dexterPath } from '../../utils/paths.js';
+import { antoinePath } from '../../utils/paths.js';
 
 // Directory where binary downloads are persisted.
-const WEB_FETCH_OUTPUT_DIR = dexterPath('web-fetch');
+const WEB_FETCH_OUTPUT_DIR = antoinePath('web-fetch');
 
 // Content types that are textual and therefore never treated as binary, even
 // though their top-level type may not be `text/*`.

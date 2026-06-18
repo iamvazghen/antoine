@@ -76,6 +76,14 @@ export const PROVIDERS: ProviderDef[] = [
     contextWindow: 128_000,
   },
   {
+    id: 'freellmapi',
+    displayName: 'FreeLLMAPI',
+    modelPrefix: 'freellmapi:',
+    apiKeyEnvVar: 'FREELLMAPI_API_KEY',
+    fastModel: 'freellmapi:gpt-4o-mini',
+    contextWindow: 128_000,
+  },
+  {
     id: 'ollama',
     displayName: 'Ollama',
     modelPrefix: 'ollama:',

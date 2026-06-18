@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getChannelProfile } from './channels.js';
-import { dexterPath } from '../utils/paths.js';
+import { antoinePath } from '../utils/paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +30,7 @@ export function getCurrentDate(): string {
  * Load SOUL.md content from user override or bundled file.
  */
 export async function loadSoulDocument(): Promise<string | null> {
-  const userSoulPath = dexterPath('SOUL.md');
+  const userSoulPath = antoinePath('SOUL.md');
   try {
     return await readFile(userSoulPath, 'utf-8');
   } catch {
@@ -48,11 +48,11 @@ export async function loadSoulDocument(): Promise<string | null> {
 }
 
 /**
- * Load user-defined research rules from .dexter/RULES.md.
+ * Load user-defined research rules from .antoine/RULES.md.
  * Returns null if the file doesn't exist (rules are optional).
  */
 export async function loadRulesDocument(): Promise<string | null> {
-  const rulesPath = dexterPath('RULES.md');
+  const rulesPath = antoinePath('RULES.md');
   try {
     return await readFile(rulesPath, 'utf-8');
   } catch {
@@ -96,7 +96,7 @@ function buildMemorySection(memoryFiles: string[], memoryContext?: string | null
 
   return `## Memory
 
-You have persistent memory stored as Markdown files in .dexter/memory/.${fileListSection}${contextSection}
+You have persistent memory stored as Markdown files in .antoine/memory/.${fileListSection}${contextSection}
 
 ### Recalling memories
 Use memory_search to recall stored facts, preferences, or notes. The search covers all
@@ -125,7 +125,7 @@ Before editing or deleting, use memory_get to verify the exact text to match.`;
 /**
  * Default system prompt used when no specific prompt is provided.
  */
-export const DEFAULT_SYSTEM_PROMPT = `You are Dexter, a helpful AI assistant.
+export const DEFAULT_SYSTEM_PROMPT = `You are Antoine, a helpful AI assistant.
 
 Current date: ${getCurrentDate()}
 
@@ -231,7 +231,7 @@ export function buildSystemPrompt(
     ? `\n## Tables (for comparative/tabular data)\n\n${profile.tables}`
     : '';
 
-  return `You are Dexter, a ${profile.label} assistant with access to research tools.
+  return `You are Antoine, a ${profile.label} assistant with access to research tools.
 
 Current date: ${getCurrentDate()}
 
@@ -268,7 +268,7 @@ ${rulesContent}
 ## Rule Management
 
 To manage research rules, the user can say "add a rule", "show my rules", "remove rule about X".
-Rules are stored in .dexter/RULES.md — use write_file or edit_file to modify them.
+Rules are stored in .antoine/RULES.md — use write_file or edit_file to modify them.
 
 ${soulContent ? `## Identity
 

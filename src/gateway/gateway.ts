@@ -1,5 +1,7 @@
 import { createChannelManager } from './channels/manager.js';
 import { createWhatsAppPlugin } from './channels/whatsapp/plugin.js';
+import { createTelegramPlugin } from './channels/telegram/plugin.js';
+import type { TelegramInboundMessage } from './channels/telegram/index.js';
 import {
   assertOutboundAllowed,
   sendComposing,
@@ -23,10 +25,10 @@ import {
 } from './group/index.js';
 import type { GroupContext } from '../agent/prompts.js';
 import { appendFileSync } from 'node:fs';
-import { dexterPath } from '../utils/paths.js';
+import { antoinePath } from '../utils/paths.js';
 import { getSetting } from '../utils/config.js';
 
-const LOG_PATH = dexterPath('gateway-debug.log');
+const LOG_PATH = antoinePath('gateway-debug.log');
 function debugLog(msg: string) {
   appendFileSync(LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
 }
@@ -212,6 +214,98 @@ async function handleInbound(cfg: GatewayConfig, inbound: WhatsAppInboundMessage
   }
 }
 
+async function handleTelegramInbound(
+  cfg: GatewayConfig,
+  inbound: TelegramInboundMessage,
+): Promise<void> {
+  const bodyPreview = elide(inbound.body.replace(/\n/g, ' '), 50);
+  const isGroup = inbound.chatType === 'group';
+  console.log(
+    `Inbound telegram ${inbound.from} (${inbound.chatType}, ${inbound.body.length} chars): "${bodyPreview}"`,
+  );
+  debugLog(`[telegram] handleInbound chatId=${inbound.chatId} isGroup=${isGroup}`);
+
+  // In groups, only respond when the bot is mentioned or replied to.
+  if (isGroup && !inbound.mentionsBot) {
+    debugLog(`[telegram] group message without mention, skipping`);
+    return;
+  }
+
+  const peerId = inbound.chatId;
+  const route = resolveRoute({
+    cfg,
+    channel: 'telegram',
+    accountId: inbound.accountId,
+    peer: { kind: inbound.chatType, id: peerId },
+  });
+
+  const storePath = resolveSessionStorePath(route.agentId);
+  upsertSessionMeta({
+    storePath,
+    sessionKey: route.sessionKey,
+    channel: 'telegram',
+    to: inbound.chatId,
+    accountId: route.accountId,
+    agentId: route.agentId,
+  });
+
+  // Keep a typing indicator alive during long agent runs.
+  const TYPING_INTERVAL_MS = 5000;
+  let typingTimer: ReturnType<typeof setInterval> | undefined;
+  const startTypingLoop = async () => {
+    await inbound.sendTyping();
+    typingTimer = setInterval(() => {
+      void inbound.sendTyping();
+    }, TYPING_INTERVAL_MS);
+  };
+  const stopTypingLoop = () => {
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = undefined;
+    }
+  };
+
+  try {
+    await startTypingLoop();
+
+    const query = inbound.body;
+    const model = getSetting('modelId', 'gpt-5.5') as string;
+    const modelProvider = getSetting('provider', 'openai') as string;
+
+    if (isSessionRunning(route.sessionKey)) {
+      debugLog(`[telegram] agent busy for session=${route.sessionKey}, enqueueing`);
+      enqueueForSession(route.sessionKey, model, query);
+      stopTypingLoop();
+      return;
+    }
+
+    debugLog(`[telegram] running agent for session=${route.sessionKey}`);
+    const startedAt = Date.now();
+    const answer = await runAgentForMessage({
+      sessionKey: route.sessionKey,
+      query,
+      model,
+      modelProvider,
+      channel: 'telegram',
+    });
+    const durationMs = Date.now() - startedAt;
+
+    stopTypingLoop();
+
+    if (answer.trim()) {
+      await inbound.reply(answer.trim());
+      console.log(`Sent telegram reply (${answer.length} chars, ${durationMs}ms)`);
+    } else {
+      console.log(`Agent returned empty response (${durationMs}ms)`);
+    }
+  } catch (err) {
+    stopTypingLoop();
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`Error: ${msg}`);
+    debugLog(`[telegram] ERROR: ${msg}`);
+  }
+}
+
 export async function startGateway(params: { configPath?: string } = {}): Promise<GatewayService> {
   const cfg = loadGatewayConfig(params.configPath);
   const plugin = createWhatsAppPlugin({
@@ -225,7 +319,21 @@ export async function startGateway(params: { configPath?: string } = {}): Promis
     plugin,
     loadConfig: () => loadGatewayConfig(params.configPath),
   });
+
+  const telegramPlugin = createTelegramPlugin({
+    loadConfig: () => loadGatewayConfig(params.configPath),
+    onMessage: async (inbound) => {
+      const current = loadGatewayConfig(params.configPath);
+      await handleTelegramInbound(current, inbound);
+    },
+  });
+  const telegramManager = createChannelManager({
+    plugin: telegramPlugin,
+    loadConfig: () => loadGatewayConfig(params.configPath),
+  });
+
   await manager.startAll();
+  await telegramManager.startAll();
 
   ensureHeartbeatCronJob(params.configPath);
   const cron = startCronRunner({ configPath: params.configPath });
@@ -234,8 +342,18 @@ export async function startGateway(params: { configPath?: string } = {}): Promis
     stop: async () => {
       cron.stop();
       await manager.stopAll();
+      await telegramManager.stopAll();
     },
-    snapshot: () => manager.getSnapshot(),
+    snapshot: () => {
+      const prefix = (
+        channel: string,
+        snap: Record<string, { accountId: string; running: boolean; connected?: boolean }>,
+      ) => Object.fromEntries(Object.entries(snap).map(([k, v]) => [`${channel}:${k}`, v]));
+      return {
+        ...prefix('whatsapp', manager.getSnapshot()),
+        ...prefix('telegram', telegramManager.getSnapshot()),
+      };
+    },
   };
 }
 

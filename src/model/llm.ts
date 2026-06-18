@@ -126,6 +126,15 @@ const MODEL_FACTORIES: Record<string, ModelFactory> = {
       }),
     });
   },
+  freellmapi: (name, opts) =>
+    new ChatOpenAI({
+      model: name.replace(/^freellmapi:/, ''),
+      ...opts,
+      apiKey: getApiKey('FREELLMAPI_API_KEY'),
+      configuration: {
+        baseURL: process.env.FREELLMAPI_BASE_URL || 'http://localhost:3001/v1',
+      },
+    }),
   ollama: (name, opts) =>
     new ChatOllama({
       model: name.replace(/^ollama:/, ''),

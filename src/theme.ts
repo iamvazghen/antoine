@@ -1,19 +1,21 @@
 import type { EditorTheme, MarkdownTheme, SelectListTheme } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 
+// Antoine "finance terminal" palette — emerald primary with a warm gold accent,
+// a deliberate departure from the previous blue scheme.
 const palette = {
-  primary: '#258bff',
-  primaryLight: '#a5cfff',
-  success: '#00cc00',
-  error: '#ff3333',
-  warning: '#ffcc00',
-  muted: '#a6a6a6',
-  mutedDark: '#303030',
-  accent: 'cyan',
+  primary: '#1fb486',
+  primaryLight: '#6ee7b7',
+  success: '#22c55e',
+  error: '#ef4444',
+  warning: '#f59e0b',
+  muted: '#94a3b8',
+  mutedDark: '#2b3138',
+  accent: '#f4b740',
   white: '#ffffff',
-  info: '#6CB6FF',
-  queryBg: '#3D3D3D',
-  border: '#303030',
+  info: '#38bdf8',
+  queryBg: '#1f2937',
+  border: '#2b3138',
 };
 
 const fg = (color: string) => (text: string) => chalk.hex(color)(text);

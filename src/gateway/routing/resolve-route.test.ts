@@ -6,7 +6,7 @@ describe('resolveRoute', () => {
     const route = resolveRoute({
       cfg: {
         gateway: { accountId: 'default', logLevel: 'info' },
-        channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] } },
+        channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] }, telegram: { enabled: true, accounts: {}, allowFrom: [] } },
         bindings: [],
       },
       channel: 'whatsapp',
@@ -22,7 +22,7 @@ describe('resolveRoute', () => {
     const route = resolveRoute({
       cfg: {
         gateway: { accountId: 'default', logLevel: 'info' },
-        channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] } },
+        channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] }, telegram: { enabled: true, accounts: {}, allowFrom: [] } },
         bindings: [
           {
             agentId: 'alpha',

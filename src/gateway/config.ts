@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { normalizeE164 } from './utils.js';
-import { dexterPath } from '../utils/paths.js';
+import { antoinePath } from '../utils/paths.js';
 
-const DEFAULT_GATEWAY_PATH = dexterPath('gateway.json');
+const DEFAULT_GATEWAY_PATH = antoinePath('gateway.json');
 const DmPolicySchema = z.enum(['pairing', 'allowlist', 'open', 'disabled']);
 const GroupPolicySchema = z.enum(['open', 'allowlist', 'disabled']);
 const ReconnectSchema = z.object({
@@ -24,6 +24,17 @@ const WhatsAppAccountSchema = z.object({
   groupPolicy: GroupPolicySchema.optional(),
   groupAllowFrom: z.array(z.string()).optional().default([]),
   sendReadReceipts: z.boolean().optional().default(true),
+});
+
+const TelegramAccountSchema = z.object({
+  name: z.string().optional(),
+  enabled: z.boolean().optional().default(true),
+  /** Bot token from @BotFather. Falls back to the TELEGRAM_BOT_TOKEN env var. */
+  botToken: z.string().optional(),
+  /** Allowed DM senders: numeric ids or @usernames. '*' allows anyone. */
+  allowFrom: z.array(z.string()).optional().default([]),
+  groupPolicy: GroupPolicySchema.optional(),
+  groupAllowFrom: z.array(z.string()).optional().default([]),
 });
 
 const HeartbeatConfigSchema = z
@@ -61,6 +72,13 @@ const GatewayConfigSchema = z.object({
         .object({
           enabled: z.boolean().optional(),
           accounts: z.record(z.string(), WhatsAppAccountSchema).optional(),
+          allowFrom: z.array(z.string()).optional(),
+        })
+        .optional(),
+      telegram: z
+        .object({
+          enabled: z.boolean().optional(),
+          accounts: z.record(z.string(), TelegramAccountSchema).optional(),
           allowFrom: z.array(z.string()).optional(),
         })
         .optional(),
@@ -109,6 +127,11 @@ export type GatewayConfig = {
       accounts: Record<string, z.infer<typeof WhatsAppAccountSchema>>;
       allowFrom: string[];
     };
+    telegram: {
+      enabled: boolean;
+      accounts: Record<string, z.infer<typeof TelegramAccountSchema>>;
+      allowFrom: string[];
+    };
   };
   bindings: Array<{
     agentId: string;
@@ -131,9 +154,18 @@ export type WhatsAppAccountConfig = {
   groupAllowFrom: string[];
   sendReadReceipts: boolean;
 };
+export type TelegramAccountConfig = {
+  accountId: string;
+  name?: string;
+  enabled: boolean;
+  botToken: string;
+  allowFrom: string[];
+  groupPolicy: 'open' | 'allowlist' | 'disabled';
+  groupAllowFrom: string[];
+};
 
 export function getGatewayConfigPath(overridePath?: string): string {
-  return overridePath ?? process.env.DEXTER_GATEWAY_CONFIG ?? DEFAULT_GATEWAY_PATH;
+  return overridePath ?? process.env.ANTOINE_GATEWAY_CONFIG ?? DEFAULT_GATEWAY_PATH;
 }
 
 export function loadGatewayConfig(overridePath?: string): GatewayConfig {
@@ -141,7 +173,10 @@ export function loadGatewayConfig(overridePath?: string): GatewayConfig {
   if (!existsSync(path)) {
     return {
       gateway: { accountId: 'default', logLevel: 'info' },
-      channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] } },
+      channels: {
+        whatsapp: { enabled: true, accounts: {}, allowFrom: [] },
+        telegram: { enabled: true, accounts: {}, allowFrom: [] },
+      },
       bindings: [],
     };
   }
@@ -171,6 +206,11 @@ export function loadGatewayConfig(overridePath?: string): GatewayConfig {
         accounts: parsed.channels?.whatsapp?.accounts ?? {},
         allowFrom: parsed.channels?.whatsapp?.allowFrom ?? [],
       },
+      telegram: {
+        enabled: parsed.channels?.telegram?.enabled ?? true,
+        accounts: parsed.channels?.telegram?.accounts ?? {},
+        allowFrom: parsed.channels?.telegram?.allowFrom ?? [],
+      },
     },
     bindings: parsed.bindings ?? [],
   };
@@ -196,7 +236,7 @@ export function resolveWhatsAppAccount(
   accountId: string,
 ): WhatsAppAccountConfig {
   const account = cfg.channels.whatsapp.accounts?.[accountId] ?? {};
-  const authDir = account.authDir ?? dexterPath('credentials', 'whatsapp', accountId);
+  const authDir = account.authDir ?? antoinePath('credentials', 'whatsapp', accountId);
   const rawAllowFrom = account.allowFrom ?? cfg.channels.whatsapp.allowFrom ?? [];
   const allowFrom = Array.from(
     new Set(
@@ -216,6 +256,33 @@ export function resolveWhatsAppAccount(
     groupPolicy: account.groupPolicy ?? 'disabled',
     groupAllowFrom: account.groupAllowFrom ?? [],
     sendReadReceipts: account.sendReadReceipts ?? true,
+  };
+}
+
+export function listTelegramAccountIds(cfg: GatewayConfig): string[] {
+  const accounts = cfg.channels.telegram.accounts ?? {};
+  const ids = Object.keys(accounts);
+  return ids.length > 0 ? ids : [cfg.gateway.accountId];
+}
+
+export function resolveTelegramAccount(
+  cfg: GatewayConfig,
+  accountId: string,
+): TelegramAccountConfig {
+  const account = cfg.channels.telegram.accounts?.[accountId] ?? {};
+  const botToken = account.botToken ?? process.env.TELEGRAM_BOT_TOKEN ?? '';
+  const rawAllowFrom = account.allowFrom ?? cfg.channels.telegram.allowFrom ?? [];
+  const allowFrom = Array.from(
+    new Set(rawAllowFrom.map((entry) => entry.trim()).filter(Boolean)),
+  );
+  return {
+    accountId,
+    enabled: account.enabled ?? true,
+    name: account.name,
+    botToken,
+    allowFrom,
+    groupPolicy: account.groupPolicy ?? 'disabled',
+    groupAllowFrom: account.groupAllowFrom ?? [],
   };
 }
 

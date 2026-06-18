@@ -1,5 +1,5 @@
 import { StructuredToolInterface } from '@langchain/core/tools';
-import { createGetFinancials, createGetMarketData, createReadFilings, createScreenStocks } from './finance/index.js';
+import { createGetFinancials, createGetMarketData, createReadFilings, createScreenStocks, getFxRates, FX_RATES_DESCRIPTION, getEconomicIndicators, ECONOMIC_INDICATORS_DESCRIPTION } from './finance/index.js';
 import { exaSearch, perplexitySearch, tavilySearch, langSearch, WEB_SEARCH_DESCRIPTION, xSearchTool, X_SEARCH_DESCRIPTION } from './search/index.js';
 import { createWebSearchTool, type WebSearchProvider } from './search/web-search.js';
 import { getSetting } from '../utils/config.js';
@@ -75,6 +75,20 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       concurrencySafe: true,
     },
     {
+      name: 'get_fx_rates',
+      tool: getFxRates,
+      description: FX_RATES_DESCRIPTION,
+      compactDescription: 'Foreign-exchange (currency) rates: latest, historical, or a time series (ECB/Frankfurter, no key).',
+      concurrencySafe: true,
+    },
+    {
+      name: 'get_economic_indicators',
+      tool: getEconomicIndicators,
+      description: ECONOMIC_INDICATORS_DESCRIPTION,
+      compactDescription: 'Macroeconomic indicators by country (GDP, inflation, unemployment, rates) from World Bank, no key.',
+      concurrencySafe: true,
+    },
+    {
       name: 'spawn_subagent',
       tool: createSpawnSubagent(model),
       description: SPAWN_SUBAGENT_DESCRIPTION,
@@ -127,7 +141,7 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       name: 'heartbeat',
       tool: heartbeatTool,
       description: HEARTBEAT_TOOL_DESCRIPTION,
-      compactDescription: 'View or update the periodic heartbeat checklist (.dexter/HEARTBEAT.md).',
+      compactDescription: 'View or update the periodic heartbeat checklist (.antoine/HEARTBEAT.md).',
       concurrencySafe: true,
     },
     {
