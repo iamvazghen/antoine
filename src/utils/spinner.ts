@@ -2,21 +2,27 @@
  * Shared spinner for all animated components.
  *
  * One setInterval drives ALL spinners in the app. Subscribers receive
- * the current frame character on each tick. Only one requestRender()
- * fires per tick regardless of how many spinners are active.
+ * the current frame character on each tick. Crucially, we trigger exactly
+ * one requestRender() per VISIBLE frame change — not per internal tick.
+ *
+ * Why this matters: pi-tui re-renders the entire component tree (intro +
+ * full chat log) on every requestRender. During a long research run the
+ * chat log can be thousands of lines, so a 20fps render loop both burns CPU
+ * and fights the terminal's native scrollback (every repaint yanks the
+ * viewport back to the bottom, making it impossible to scroll up smoothly).
+ * An ~8fps cadence keeps the spinner lively while leaving the terminal free
+ * to scroll between frames.
  */
 
 import type { TUI } from '@mariozechner/pi-tui';
 
-export const SPINNER_INTERVAL_MS = 50;
-const FRAME_ADVANCE_MS = 120;
-const FRAME_ADVANCE_TICKS = Math.max(1, Math.round(FRAME_ADVANCE_MS / SPINNER_INTERVAL_MS));
+// ~8 fps. Calm enough to not fight terminal scroll, fast enough to read as motion.
+export const SPINNER_INTERVAL_MS = 120;
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 type SpinnerSubscriber = (frame: string) => void;
 
 let interval: ReturnType<typeof setInterval> | null = null;
-let tickCount = 0;
 let frameIndex = 0;
 const subscribers = new Set<SpinnerSubscriber>();
 let tuiInstance: TUI | null = null;
@@ -37,14 +43,12 @@ export function subscribeSpinner(cb: SpinnerSubscriber): () => void {
 
   if (!interval) {
     interval = setInterval(() => {
-      tickCount++;
-      if (tickCount % FRAME_ADVANCE_TICKS === 0) {
-        frameIndex = (frameIndex + 1) % SPINNER_FRAMES.length;
-      }
+      frameIndex = (frameIndex + 1) % SPINNER_FRAMES.length;
       const frame = SPINNER_FRAMES[frameIndex];
       for (const sub of subscribers) {
         sub(frame);
       }
+      // One render per visible frame change — keeps scroll responsive.
       tuiInstance?.requestRender();
     }, SPINNER_INTERVAL_MS);
   }

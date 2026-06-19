@@ -9,6 +9,7 @@ export {
   ApiKeyInputComponent,
   createApiKeyConfirmSelector,
   createApprovalSelector,
+  createChoiceSelector,
   createModelSelector,
   createProviderSelector,
   createSearchProviderSelector,

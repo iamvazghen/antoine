@@ -43,7 +43,9 @@ Antoine takes complex financial questions and turns them into clear, step-by-ste
 - **Broad Market Coverage**: Equities (statements, ratios, filings, insider & institutional activity), crypto, **foreign-exchange rates** (ECB), and **macroeconomic indicators** (World Bank) — the last two need no API key
 - **Local-First Models**: FreeLLMAPI auto-routing by default; swap to any major hosted provider or Ollama from the in-app `/model` menu
 - **Talk to it anywhere**: interactive CLI, plus optional WhatsApp and Telegram gateways
-- **Persistent Memory**: learns your preferences and recalls past research across sessions
+- **Persistent Memory**: learns your preferences and recalls past research across sessions (semantic search via local Ollama embeddings, no key required)
+- **Resumable Sessions**: every conversation is saved and can be resumed with full context (`antoine --resume`, `/sessions`, `/resume`)
+- **Themeable UI**: switch the color theme live with `/theme` — Emerald, Sapphire, or Amethyst
 - **Safety Features**: Built-in loop detection and step limits to prevent runaway execution
 
 
@@ -144,7 +146,9 @@ So you can launch Antoine from **any folder**, a global launcher (`antoine`) is 
 Commands:
 
 ```bash
-antoine            # launch the interactive CLI (this is how you start the product)
+antoine            # launch the interactive CLI (new session)
+antoine --resume   # resume your most recent session
+antoine --resume <id>   # resume a specific session (ids shown by /sessions)
 antoine gateway    # start the messaging gateway (WhatsApp + Telegram)
 antoine telegram   # configure the Telegram bot
 antoine login      # link a WhatsApp account
@@ -152,6 +156,17 @@ antoine login      # link a WhatsApp account
 
 > Antoine always runs from its install directory, so your API keys (`.env`) and
 > data (`.antoine/`) are found regardless of which folder you launched it from.
+
+### Sessions & resume
+
+Every conversation is saved as a **session** under `.antoine/sessions/`, written
+after each turn so nothing is lost if you close the terminal. Pick a thread back
+up later with full multi-turn context restored into the model:
+
+- `antoine --resume` — resume your most recent session at startup.
+- `/sessions` — inside the CLI, list saved sessions (title, age, turn count, id).
+- `/resume` — inside the CLI, resume your most recent previous session.
+- `antoine --resume <id>` — open a specific session by id.
 
 ## 📊 How to Evaluate
 

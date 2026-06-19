@@ -169,6 +169,34 @@ interface CallLlmOptions {
   outputSchema?: z.ZodType<unknown>;
   tools?: StructuredToolInterface[];
   signal?: AbortSignal;
+  /**
+   * Hard ceiling for the whole call. Internal "utility" LLM calls (e.g. the
+   * stock screener translating natural language → filters) route through
+   * whatever provider is default — including slow free proxies that can stall
+   * for minutes. A timeout converts a multi-minute hang into a fast, recoverable
+   * error so the agent can move on.
+   */
+  timeoutMs?: number;
+}
+
+function withLlmTimeout<T>(promise: Promise<T>, ms: number | undefined): Promise<T> {
+  if (!ms || ms <= 0) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`LLM call exceeded ${Math.round(ms / 1000)}s timeout`)),
+      ms,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 export interface LlmResult {
@@ -225,7 +253,7 @@ function buildAnthropicMessages(systemPrompt: string, userPrompt: string) {
 }
 
 export async function callLlm(prompt: string, options: CallLlmOptions = {}): Promise<LlmResult> {
-  const { model = DEFAULT_MODEL, systemPrompt, outputSchema, tools, signal } = options;
+  const { model = DEFAULT_MODEL, systemPrompt, outputSchema, tools, signal, timeoutMs } = options;
   const finalSystemPrompt = systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   const llm = getChatModel(model, false);
@@ -246,7 +274,10 @@ export async function callLlm(prompt: string, options: CallLlmOptions = {}): Pro
   if (provider.id === 'anthropic') {
     // Anthropic: use explicit messages with cache_control for prompt caching (~90% savings)
     const messages = buildAnthropicMessages(finalSystemPrompt, prompt);
-    result = await withRetry(() => runnable.invoke(messages, invokeOpts), provider.displayName);
+    result = await withLlmTimeout(
+      withRetry(() => runnable.invoke(messages, invokeOpts), provider.displayName),
+      timeoutMs,
+    );
   } else {
     // Other providers: use ChatPromptTemplate (OpenAI/Gemini have automatic caching)
     const promptTemplate = ChatPromptTemplate.fromMessages([
@@ -254,7 +285,10 @@ export async function callLlm(prompt: string, options: CallLlmOptions = {}): Pro
       ['user', '{prompt}'],
     ]);
     const chain = promptTemplate.pipe(runnable);
-    result = await withRetry(() => chain.invoke({ prompt }, invokeOpts), provider.displayName);
+    result = await withLlmTimeout(
+      withRetry(() => chain.invoke({ prompt }, invokeOpts), provider.displayName),
+      timeoutMs,
+    );
   }
   const usage = extractUsage(result);
 

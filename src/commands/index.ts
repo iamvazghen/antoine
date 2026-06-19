@@ -6,11 +6,14 @@ export interface SlashCommand {
 export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'model', description: 'Switch LLM provider and model' },
   { name: 'search', description: 'Choose preferred web search provider' },
+  { name: 'theme', description: 'Switch the color theme (emerald → sapphire → amethyst)' },
   { name: 'rules', description: 'Show your research rules' },
   { name: 'clear', description: 'Clear the conversation' },
   { name: 'memory', description: 'Show what Antoine remembers about you' },
   { name: 'heartbeat', description: 'Show your heartbeat monitoring checklist' },
   { name: 'history', description: 'Show recent conversation summaries' },
+  { name: 'sessions', description: 'List saved sessions you can resume' },
+  { name: 'resume', description: 'Resume your most recent previous session' },
   { name: 'help', description: 'Show keyboard shortcuts and tips' },
 ];
 

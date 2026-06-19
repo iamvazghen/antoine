@@ -94,6 +94,26 @@ export function createModelSelector(
   return list;
 }
 
+/**
+ * Generic single-choice selector for simple value/label lists (themes, sessions,
+ * …). Mirrors the provider/model selectors so all pickers behave identically.
+ */
+export function createChoiceSelector(
+  items: { value: string; label: string }[],
+  onSelect: (value: string | null) => void,
+  visibleRows = 10,
+) {
+  const rows = Math.min(visibleRows, Math.max(2, items.length + 1));
+  const list = new VimSelectList(
+    items.map((i) => ({ value: i.value, label: i.label }) as SelectItem),
+    rows,
+    selectListTheme,
+  );
+  list.onSelect = (item) => onSelect(item.value);
+  list.onCancel = () => onSelect(null);
+  return list;
+}
+
 export function createApprovalSelector(onSelect: (decision: ApprovalDecision) => void) {
   const items: SelectItem[] = [
     { value: 'allow-once', label: '1. Yes' },

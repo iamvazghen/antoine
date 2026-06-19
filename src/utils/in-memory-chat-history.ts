@@ -89,6 +89,22 @@ Generate a brief 1-2 sentence summary of this answer.`;
   }
 
   /**
+   * Seed history from a resumed session. Unlike saveAnswer, this does NOT make
+   * an LLM call per turn (which would be slow and networked at startup) — it
+   * uses a truncated answer as the summary so older turns still compact cleanly.
+   */
+  loadTurns(turns: { query: string; answer: string }[]): void {
+    for (const turn of turns) {
+      this.messages.push({
+        id: this.messages.length,
+        query: turn.query,
+        answer: turn.answer,
+        summary: turn.answer.length > 200 ? `${turn.answer.slice(0, 200)}…` : turn.answer,
+      });
+    }
+  }
+
+  /**
    * Returns all messages
    */
   getMessages(): Message[] {

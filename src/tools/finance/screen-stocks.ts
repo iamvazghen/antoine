@@ -143,13 +143,17 @@ export function createScreenStocks(model: string): DynamicStructuredTool {
           model,
           systemPrompt: buildScreenerPrompt(metrics),
           outputSchema: ScreenerFilterSchema,
+          // The NL→filters translation is a quick structured-output call. Cap it so a
+          // slow/free proxy can't stall the whole research run for minutes.
+          timeoutMs: 60_000,
         });
         filters = ScreenerFilterSchema.parse(response);
       } catch (error) {
         return formatToolResult(
           {
-            error: 'Failed to parse screening criteria',
+            error: 'Failed to build screening criteria',
             details: error instanceof Error ? error.message : String(error),
+            hint: 'The screener translates your criteria with an LLM call; it timed out or failed. Retry with simpler criteria, or use get_financials/get_market_data for specific tickers instead.',
           },
           [],
         );

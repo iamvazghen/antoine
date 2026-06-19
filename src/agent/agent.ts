@@ -21,7 +21,7 @@ import { resolveProvider } from '../providers.js';
 
 
 const DEFAULT_MODEL = 'freellmapi:auto';
-const DEFAULT_MAX_ITERATIONS = 10;
+const DEFAULT_MAX_ITERATIONS = 20;
 const MAX_OVERFLOW_RETRIES = 2;
 const OVERFLOW_KEEP_ROUNDS = 3;
 
@@ -275,11 +275,36 @@ export class Agent {
       }
     }
 
-    // Max iterations reached
+    // Max iterations reached. Rather than throw away all the research done so far
+    // with a bare failure, make one final tool-less call to synthesize the best
+    // answer from everything gathered above.
+    let synthesizedAnswer = '';
+    try {
+      messages.push(
+        new HumanMessage(
+          'You have reached the maximum number of research steps. Do NOT call any more tools. ' +
+            'Write your best final answer now, synthesizing everything gathered above. ' +
+            'Lead with the answer, cite the key evidence, and be explicit about any remaining gaps or uncertainty.',
+        ),
+      );
+      // No tools bound: force a text answer instead of another tool call.
+      const { response, usage } = await callLlmWithMessages(messages, {
+        model: this.model,
+        signal: this.signal,
+      });
+      ctx.tokenCounter.add(usage);
+      synthesizedAnswer = (extractTextContent(response as AIMessage) ?? '').trim();
+    } catch {
+      // Fall through to the generic message below.
+    }
+
     const totalTime = Date.now() - ctx.startTime;
     yield {
       type: 'done',
-      answer: `Reached maximum iterations (${this.maxIterations}). I was unable to complete the research in the allotted steps.`,
+      answer:
+        synthesizedAnswer ||
+        `I reached the research step limit (${this.maxIterations}) before fully converging. ` +
+          'Here is what I gathered above — ask me to continue and I can go deeper.',
       toolCalls: ctx.scratchpad.getToolCallRecords(),
       iterations: ctx.iteration,
       totalTime,

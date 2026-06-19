@@ -32,13 +32,43 @@ import {
   IntroComponent,
   WorkingIndicatorComponent,
   createApiKeyConfirmSelector,
+  createChoiceSelector,
   createModelSelector,
   createProviderSelector,
   createSearchProviderSelector,
 } from './components/index.js';
-import { editorTheme, theme } from './theme.js';
+import { editorTheme, theme, setActiveTheme, getActiveTheme, THEMES, type ThemeName } from './theme.js';
+import { getSetting, setSetting } from './utils/config.js';
 import { matchCommands, type SlashCommand } from './commands/index.js';
 import { initSpinner } from './utils/spinner.js';
+import {
+  SessionStore,
+  listSessions,
+  latestSession,
+  loadSession,
+  type SessionFile,
+  type SessionSummary,
+} from './utils/session-store.js';
+
+/** Parse a `--resume [id]` / `-r [id]` / `resume [id]` startup request. */
+function parseResumeArg(argv: string[]): { resume: boolean; id?: string } {
+  const idx = argv.findIndex((a) => a === '--resume' || a === '-r' || a === 'resume');
+  if (idx === -1) return { resume: false };
+  const next = argv[idx + 1];
+  const id = next && !next.startsWith('-') ? next : undefined;
+  return { resume: true, id };
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const mins = Math.floor((Date.now() - then) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 function truncateForHistory(text: string): string {
   const lines = text.split('\n');
@@ -182,12 +212,18 @@ function renderEvent(
   }
 }
 
-export async function runCli() {
+export async function runCli(argv: string[] = process.argv.slice(2)) {
+  const resumeRequest = parseResumeArg(argv);
+  // Apply the saved color theme before the first render.
+  setActiveTheme(getSetting<ThemeName>('theme', 'emerald'));
   const tui = new TUI(new ProcessTerminal());
   const root = new Container();
   const chatLog = new ChatLogComponent(tui);
   const inputHistory = new InputHistoryController(() => tui.requestRender());
   let lastError: string | null = null;
+  // Persistent, resumable conversation thread. Assigned once the model is known
+  // (below) and re-pointed if the user resumes a prior session via /resume.
+  let sessionStore: SessionStore | undefined;
 
   const onError = (message: string) => {
     lastError = message;
@@ -198,6 +234,7 @@ export async function runCli() {
   let agentRunner: AgentRunnerController;
   const modelSelection = new ModelSelectionController(onError, () => {
     intro.setModel(modelSelection.model);
+    sessionStore?.setModel(modelSelection.model);
     agentRunner?.updateAgentConfig({
       model: modelSelection.model,
       modelProvider: modelSelection.provider,
@@ -209,6 +246,7 @@ export async function runCli() {
     renderSelectionOverlay();
     tui.requestRender();
   });
+  sessionStore = SessionStore.create(modelSelection.model);
 
   // Incremental history tracking
   let lastRenderedEventCount = 0;
@@ -222,9 +260,15 @@ export async function runCli() {
   // Cached so the stateful question overlay survives onChange-driven re-renders
   // (partial selections, active tab, in-progress text are kept across renders).
   let activeQuestionPrompt: QuestionPromptComponent | null = null;
+  // Lightweight picker overlays for /theme and /sessions|/resume. Cached so the
+  // highlighted row survives re-renders, mirroring activeQuestionPrompt.
+  let activeOverlay: 'theme' | 'session' | null = null;
+  let themeSelector: ReturnType<typeof createChoiceSelector> | null = null;
+  let sessionSelector: ReturnType<typeof createChoiceSelector> | null = null;
+  let sessionChoices: SessionSummary[] = [];
 
   agentRunner = new AgentRunnerController(
-    { model: modelSelection.model, modelProvider: modelSelection.provider, maxIterations: 10 },
+    { model: modelSelection.model, modelProvider: modelSelection.provider, maxIterations: 20 },
     modelSelection.inMemoryChatHistory,
     () => {
       // Incremental history update — only render new events
@@ -318,7 +362,9 @@ export async function runCli() {
   workingIndicator.setTurnStatsProvider(() => agentRunner.turnStats);
   const editor = new CustomEditor(tui, editorTheme);
   const hintBar = new HintBarComponent();
-  const debugPanel = new DebugPanelComponent(8, true);
+  // Debug panel is a developer aid (raw log lines under the input). Hidden by
+  // default so end users see a single clean input; enable with ANTOINE_DEBUG=1.
+  const debugPanel = new DebugPanelComponent(8, !!process.env.ANTOINE_DEBUG);
   const spacer = new Spacer(1);
 
   // Build the component tree ONCE — stable structure, no root.clear()
@@ -360,9 +406,43 @@ export async function runCli() {
    ctrl+c       Exit Antoine
   /model       Switch LLM provider and model
   /search      Choose preferred web search provider
+  /theme       Switch color theme (emerald / sapphire / amethyst)
   /rules       Show research rules
+  /sessions    List saved sessions you can resume
+  /resume      Resume your most recent previous session
   /clear       Clear conversation
-  ↑ / ↓        Navigate input history`;
+  ↑ / ↓        Navigate input history
+
+  Tip: launch with "antoine --resume" to continue your last session.`;
+
+  // Replay a saved session into the live view and re-seed model context, then
+  // point the active store at it so new turns continue that thread.
+  const resumeInto = (session: SessionFile) => {
+    chatLog.clearAll();
+    modelSelection.inMemoryChatHistory.clear();
+    modelSelection.inMemoryChatHistory.loadTurns(session.turns);
+    lastRenderedEventCount = 0;
+    lastRenderedStatus = '';
+    lastRenderedAnswer = false;
+    lastRenderedQueryId = null;
+    finalizedToolIds.clear();
+    appliedToolProgress.clear();
+    for (const turn of session.turns) {
+      chatLog.addQuery(turn.query);
+      chatLog.finalizeAnswer(turn.answer);
+    }
+    sessionStore = SessionStore.fromExisting(session);
+    const count = session.turns.length;
+    chatLog.addChild(new Spacer(1));
+    chatLog.addChild(
+      new Text(
+        theme.muted(`↻ Resumed: ${session.title} · ${count} turn${count === 1 ? '' : 's'}`),
+        0,
+        0,
+      ),
+    );
+    tui.requestRender();
+  };
 
   const handleSlashCommand = async (command: string) => {
     switch (command) {
@@ -372,6 +452,13 @@ export async function runCli() {
       case 'search':
         searchSelection.startSelection();
         break;
+      case 'theme': {
+        themeSelector = null; // rebuilt with the current selection marker
+        activeOverlay = 'theme';
+        renderSelectionOverlay();
+        tui.requestRender();
+        break;
+      }
       case 'rules': {
         try {
           const rulesContent = await readFile(antoinePath('RULES.md'), 'utf-8');
@@ -408,6 +495,23 @@ export async function runCli() {
             chatLog.addChild(new Text(theme.muted(`     ${summary}`), 0, 0));
           }
         }
+        tui.requestRender();
+        break;
+      }
+      case 'sessions':
+      case 'resume': {
+        // Both open an interactive picker of saved sessions; selecting one resumes it.
+        const sessions = await listSessions();
+        if (sessions.length === 0) {
+          chatLog.addChild(new Spacer(1));
+          chatLog.addChild(new Text(theme.muted('No saved sessions yet.'), 0, 0));
+          tui.requestRender();
+          break;
+        }
+        sessionChoices = sessions;
+        sessionSelector = null; // rebuilt from the current list
+        activeOverlay = 'session';
+        renderSelectionOverlay();
         tui.requestRender();
         break;
       }
@@ -468,6 +572,7 @@ export async function runCli() {
     const result = await agentRunner.runQuery(query);
     if (result?.answer) {
       await inputHistory.updateAgentResponse(result.answer);
+      await sessionStore?.appendTurn(query, result.answer);
     }
     refreshError();
     tui.requestRender();
@@ -528,7 +633,8 @@ export async function runCli() {
       !modelSelection.isInSelectionFlow() &&
       !searchSelection.isInSelectionFlow() &&
       !agentRunner.pendingApproval &&
-      !agentRunner.pendingQuestion
+      !agentRunner.pendingQuestion &&
+      activeOverlay === null
     ) {
       tui.setFocus(editor);
     }
@@ -586,6 +692,76 @@ export async function runCli() {
   const renderSelectionOverlay = () => {
     const state = modelSelection.state;
     const searchState = searchSelection.state;
+
+    // Lightweight pickers for /theme and /sessions|/resume. Handled before the
+    // idle short-circuit so an onChange-driven re-render keeps them on screen.
+    if (activeOverlay === 'theme') {
+      if (!themeSelector) {
+        themeSelector = createChoiceSelector(
+          THEMES.map((t, i) => ({
+            value: t.name,
+            label: `${i + 1}. ${t.label}${getActiveTheme() === t.name ? ' ✓' : ''}`,
+          })),
+          (value) => {
+            if (value) {
+              setActiveTheme(value as ThemeName);
+              setSetting('theme', value);
+            }
+            activeOverlay = null;
+            themeSelector = null;
+            renderSelectionOverlay();
+            tui.requestRender();
+          },
+          THEMES.length + 1,
+        );
+      }
+      showScreenView(
+        'Select a theme',
+        'Changes apply immediately and are saved for next time.',
+        themeSelector,
+        'Enter to confirm · esc to cancel',
+        themeSelector,
+      );
+      return;
+    }
+
+    if (activeOverlay === 'session') {
+      if (!sessionSelector) {
+        sessionSelector = createChoiceSelector(
+          sessionChoices.map((s, i) => {
+            const turns = `${s.turnCount} turn${s.turnCount === 1 ? '' : 's'}`;
+            const current = sessionStore && s.id === sessionStore.id ? ' (current)' : '';
+            return {
+              value: s.id,
+              label: `${i + 1}. ${s.title}${current}  ·  ${formatRelativeTime(s.updatedAt)} · ${turns}`,
+            };
+          }),
+          (value) => {
+            activeOverlay = null;
+            sessionSelector = null;
+            if (value) {
+              void loadSession(value).then((full) => {
+                if (full) resumeInto(full);
+                renderSelectionOverlay();
+                tui.requestRender();
+              });
+            } else {
+              renderSelectionOverlay();
+              tui.requestRender();
+            }
+          },
+        );
+      }
+      showScreenView(
+        'Resume a session',
+        'Pick a conversation to continue — full context is restored.',
+        sessionSelector,
+        'Enter to resume · esc to cancel',
+        sessionSelector,
+      );
+      return;
+    }
+
     if (
       state.appState === 'idle' &&
       searchState.appState === 'idle' &&
@@ -844,10 +1020,39 @@ export async function runCli() {
   for (const msg of inputHistory.getMessages().reverse()) {
     editor.addToHistoryWithTruncation(msg);
   }
+
+  // Resume a prior session at startup if requested via `antoine --resume [id]`.
+  if (resumeRequest.resume) {
+    const target = resumeRequest.id ? await loadSession(resumeRequest.id) : await latestSession();
+    if (target && target.turns.length > 0) {
+      resumeInto(target);
+    } else {
+      chatLog.addChild(new Spacer(1));
+      chatLog.addChild(
+        new Text(
+          theme.muted(
+            resumeRequest.id
+              ? `No session found with id "${resumeRequest.id}". Starting fresh.`
+              : 'No previous session to resume. Starting fresh.',
+          ),
+          0,
+          0,
+        ),
+      );
+    }
+  }
+
   renderSelectionOverlay();
   refreshError();
 
   tui.start();
+  // pi-tui's first paint deliberately does NOT clear the screen ("assumes clean
+  // screen"), and it leaves its UI on the terminal when a previous run exits.
+  // That stranded a stale, empty input box above the welcome banner whenever
+  // Antoine was relaunched in a dirty terminal. Force one clean full redraw
+  // (clears scrollback + screen) so we always start pristine and never duplicate
+  // the input box.
+  tui.requestRender(true);
   await new Promise<void>((resolve) => {
     const finish = () => resolve();
     process.once('exit', finish);

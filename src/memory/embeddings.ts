@@ -1,6 +1,7 @@
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { OllamaEmbeddings } from '@langchain/ollama';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { logger } from '../utils/logger.js';
 import type { EmbeddingProviderId, MemoryEmbeddingClient } from './types.js';
 
 const DEFAULT_OPENAI_MODEL = 'text-embedding-3-small';
@@ -116,6 +117,11 @@ export function createEmbeddingClient(params: {
   };
 }
 
+// Embedding providers fail loudly (401 on a bad/expired key, timeouts, quota).
+// Memory search must degrade to keyword-only rather than blow up the whole query,
+// so we warn once per process and return null instead of throwing.
+let embeddingFailureWarned = false;
+
 export async function embedSingleQuery(
   client: MemoryEmbeddingClient | null,
   query: string,
@@ -123,6 +129,17 @@ export async function embedSingleQuery(
   if (!client) {
     return null;
   }
-  const vectors = await withTimeout(client.embed([query]), EMBEDDING_TIMEOUT_MS, 'Embedding query timed out');
-  return vectors[0] ?? null;
+  try {
+    const vectors = await withTimeout(client.embed([query]), EMBEDDING_TIMEOUT_MS, 'Embedding query timed out');
+    return vectors[0] ?? null;
+  } catch (error) {
+    if (!embeddingFailureWarned) {
+      embeddingFailureWarned = true;
+      const detail = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        `Memory embeddings unavailable (${client.provider}); falling back to keyword search. ${detail}`,
+      );
+    }
+    return null;
+  }
 }
