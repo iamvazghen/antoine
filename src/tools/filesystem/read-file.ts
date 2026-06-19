@@ -1,6 +1,6 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { constants } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { z } from 'zod';
 import { formatToolResult } from '../types.js';
 import { assertSandboxPath } from './sandbox.js';
@@ -51,6 +51,21 @@ export const readFileTool = new DynamicStructuredTool({
     const absolutePath = resolveReadPath(sandboxPath, cwd);
 
     await access(absolutePath, constants.R_OK);
+
+    // Reading a directory throws a cryptic EISDIR. Return a useful listing instead
+    // so the agent can pick a real file (e.g. .antoine/memory holds MEMORY.md + logs).
+    const info = await stat(absolutePath);
+    if (info.isDirectory()) {
+      const entries = await readdir(absolutePath, { withFileTypes: true });
+      const listing = entries
+        .map((e) => `${e.isDirectory() ? '[dir]  ' : '[file] '}${e.name}`)
+        .join('\n');
+      return formatToolResult({
+        path: input.path,
+        content: `'${input.path}' is a directory, not a file. It contains:\n${listing || '(empty)'}\n\nRead a specific file inside it to see its contents.`,
+        isDirectory: true,
+      });
+    }
 
     const textContent = (await readFile(absolutePath)).toString('utf-8');
     const allLines = textContent.split('\n');

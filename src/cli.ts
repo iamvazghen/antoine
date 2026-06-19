@@ -498,9 +498,8 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
         tui.requestRender();
         break;
       }
-      case 'sessions':
-      case 'resume': {
-        // Both open an interactive picker of saved sessions; selecting one resumes it.
+      case 'sessions': {
+        // Interactive picker of saved sessions; selecting one resumes it.
         const sessions = await listSessions();
         if (sessions.length === 0) {
           chatLog.addChild(new Spacer(1));
@@ -512,6 +511,21 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
         sessionSelector = null; // rebuilt from the current list
         activeOverlay = 'session';
         renderSelectionOverlay();
+        tui.requestRender();
+        break;
+      }
+      case 'resume': {
+        // Immediately reveal and continue the most recent prior conversation.
+        const sessions = await listSessions();
+        const target = sessions.find((s) => !sessionStore || s.id !== sessionStore.id) ?? sessions[0];
+        if (!target) {
+          chatLog.addChild(new Spacer(1));
+          chatLog.addChild(new Text(theme.muted('No previous session to resume.'), 0, 0));
+          tui.requestRender();
+          break;
+        }
+        const full = await loadSession(target.id);
+        if (full) resumeInto(full);
         tui.requestRender();
         break;
       }
@@ -706,6 +720,22 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
             if (value) {
               setActiveTheme(value as ThemeName);
               setSetting('theme', value);
+              // Components bake colors into strings at build time, so a plain
+              // re-render won't recolor existing content. Rebuild the intro and
+              // replay the saved transcript so the WHOLE screen adopts the new
+              // theme — the conversation stays visible, just recolored.
+              intro.refresh();
+              chatLog.clearAll();
+              lastRenderedEventCount = 0;
+              lastRenderedStatus = '';
+              lastRenderedAnswer = false;
+              lastRenderedQueryId = null;
+              finalizedToolIds.clear();
+              appliedToolProgress.clear();
+              for (const turn of sessionStore?.turns ?? []) {
+                chatLog.addQuery(turn.query);
+                chatLog.finalizeAnswer(turn.answer);
+              }
             }
             activeOverlay = null;
             themeSelector = null;
