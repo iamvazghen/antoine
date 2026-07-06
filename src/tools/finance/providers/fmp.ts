@@ -1,0 +1,144 @@
+/**
+ * Financial Modeling Prep — fundamentals, ratios, DCF, transcripts.
+ * Docs: https://site.financialmodelingprep.com/developer/docs
+ * Activated when FMP_API_KEY is set.
+ */
+import { DynamicStructuredTool, type StructuredToolInterface } from '@langchain/core/tools';
+import { z } from 'zod';
+import { callProvider, TTL_FUNDAMENTALS } from '../provider-call.js';
+import { formatToolResult, type SourceRef } from '../../types.js';
+
+const LABEL = 'FMP';
+const BASE_URL = 'https://financialmodelingprep.com/api/v3';
+
+function apiKey(): string {
+  const k = process.env.FMP_API_KEY;
+  if (!k) throw new Error(`[${LABEL}] FMP_API_KEY not set`);
+  return k;
+}
+
+async function callFmp(path: string, params: Record<string, string>, title?: string): Promise<string> {
+  const url = new URL(`${BASE_URL}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  url.searchParams.set('apikey', apiKey());
+  const result = await callProvider({
+    provider: 'fmp', endpoint: path.slice(1).replace(/\//g, '_'),
+    params, url: url.toString(), ttlMs: TTL_FUNDAMENTALS,
+  });
+  const sources: SourceRef[] = result.sourceUrls.map((u, i) => ({ id: i + 1, url: u, provider: LABEL, title }));
+  return JSON.stringify({
+    data: result.data, sourceUrls: result.sourceUrls, sources,
+    provider: LABEL, asOf: result.asOf, cached: result.cached,
+  });
+}
+
+const profile = new DynamicStructuredTool({
+  name: 'fmp_company_profile',
+  description: 'Company profile (price, beta, market cap, sector, CEO) from FMP.',
+  schema: z.object({ ticker: z.string() }),
+  func: async ({ ticker }) => callFmp(`/profile/${ticker.toUpperCase()}`, {}, `profile ${ticker.toUpperCase()}`),
+});
+
+const ratios = new DynamicStructuredTool({
+  name: 'fmp_ratios',
+  description: 'Comprehensive financial ratios (P/E, ROE, debt/equity, margins) from FMP.',
+  schema: z.object({
+    ticker: z.string(),
+    period: z.enum(['annual', 'quarter']).default('annual'),
+    limit: z.number().int().min(1).max(40).default(5),
+  }),
+  func: async ({ ticker, period, limit }) =>
+    callFmp(`/ratios/${ticker.toUpperCase()}`, { period, limit: String(limit) }, `ratios ${ticker.toUpperCase()}`),
+});
+
+const dcf = new DynamicStructuredTool({
+  name: 'fmp_dcf_valuation',
+  description: 'DCF intrinsic value estimate from FMP.',
+  schema: z.object({ ticker: z.string() }),
+  func: async ({ ticker }) => callFmp(`/discounted-cash-flow/${ticker.toUpperCase()}`, {}, `dcf ${ticker.toUpperCase()}`),
+});
+
+const incomeStatement = new DynamicStructuredTool({
+  name: 'fmp_income_statement',
+  description: 'Income statements (annual or quarterly) from FMP.',
+  schema: z.object({
+    ticker: z.string(),
+    period: z.enum(['annual', 'quarter']).default('annual'),
+    limit: z.number().int().min(1).max(40).default(5),
+  }),
+  func: async ({ ticker, period, limit }) =>
+    callFmp(`/income-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) }, `income ${ticker.toUpperCase()}`),
+});
+
+const balanceSheet = new DynamicStructuredTool({
+  name: 'fmp_balance_sheet',
+  description: 'Balance sheets (annual or quarterly) from FMP.',
+  schema: z.object({
+    ticker: z.string(),
+    period: z.enum(['annual', 'quarter']).default('annual'),
+    limit: z.number().int().min(1).max(40).default(5),
+  }),
+  func: async ({ ticker, period, limit }) =>
+    callFmp(`/balance-sheet-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) }, `balance ${ticker.toUpperCase()}`),
+});
+
+const earningsCalendar = new DynamicStructuredTool({
+  name: 'fmp_earnings_calendar',
+  description: 'Upcoming earnings calendar (date, ticker, EPS/revenue estimates) from FMP.',
+  schema: z.object({ from: z.string().describe('Start YYYY-MM-DD'), to: z.string().describe('End YYYY-MM-DD') }),
+  func: async ({ from, to }) => callFmp('/earning_calendar', { from, to }, `earnings calendar ${from}..${to}`),
+});
+
+const stockScreener = new DynamicStructuredTool({
+  name: 'fmp_stock_screener',
+  description: 'Screen stocks by criteria (market cap, price, beta, volume, sector, exchange) from FMP.',
+  schema: z.object({
+    market_cap_more_than: z.number().optional(),
+    market_cap_less_than: z.number().optional(),
+    price_more_than: z.number().optional(),
+    price_less_than: z.number().optional(),
+    beta_more_than: z.number().optional(),
+    beta_less_than: z.number().optional(),
+    volume_more_than: z.number().optional(),
+    volume_less_than: z.number().optional(),
+    sector: z.string().optional(),
+    exchange: z.string().optional(),
+    limit: z.number().int().min(1).max(1000).default(50),
+  }),
+  func: async (input) => {
+    const params: Record<string, string> = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (v !== undefined && v !== null) params[k] = String(v);
+    }
+    return callFmp('/stock-screener', params, 'fmp screener');
+  },
+});
+
+const earningsSurprises = new DynamicStructuredTool({
+  name: 'fmp_earnings_surprises',
+  description: 'Historical earnings surprises (actual vs estimated EPS) from FMP.',
+  schema: z.object({ ticker: z.string() }),
+  func: async ({ ticker }) => callFmp(`/earnings-surprises/${ticker.toUpperCase()}`, {}, `surprises ${ticker.toUpperCase()}`),
+});
+
+const priceTarget = new DynamicStructuredTool({
+  name: 'fmp_price_target',
+  description: 'Analyst price target consensus (low/avg/high) from FMP.',
+  schema: z.object({ ticker: z.string() }),
+  func: async ({ ticker }) => callFmp(`/price-target/${ticker.toUpperCase()}`, {}, `price target ${ticker.toUpperCase()}`),
+});
+
+export function getLeaves(): StructuredToolInterface[] | null {
+  if (!process.env.FMP_API_KEY) return null;
+  return [profile, ratios, dcf, incomeStatement, balanceSheet, earningsCalendar, stockScreener, earningsSurprises, priceTarget];
+}
+
+export const fmpProfile = profile;
+export const fmpRatios = ratios;
+export const fmpDcf = dcf;
+export const fmpIncomeStatement = incomeStatement;
+export const fmpBalanceSheet = balanceSheet;
+export const fmpEarningsCalendar = earningsCalendar;
+export const fmpStockScreener = stockScreener;
+export const fmpEarningsSurprises = earningsSurprises;
+export const fmpPriceTarget = priceTarget;

@@ -1,5 +1,6 @@
 import { buildCompactToolDescriptions } from '../tools/registry.js';
 import { buildSkillMetadataSection, discoverSkills } from '../skills/index.js';
+import { PortfolioStore } from '../tools/portfolio/index.js';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -118,10 +119,54 @@ edit_file for memory files.
 Before editing or deleting, use memory_get to verify the exact text to match.`;
 }
 
-// ============================================================================
-// Default System Prompt (for backward compatibility)
-// ============================================================================
+/**
+ * Build a compact portfolio summary to inject into the system prompt. Empty
+ * when the user has no positions, so the prompt stays short. Reads live
+ * from the portfolio store every call — cheap JSON file read on the main
+ * thread.
+ *
+ * The agent should always call `portfolio_view` (the tool) for the canonical,
+ * full data; this summary is just a hint so the agent has context without
+ * spending a tool call.
+ */
+function buildPortfolioSection(): string {
+  const portfolio = new PortfolioStore().read();
+  if (portfolio.positions.length === 0 && portfolio.notes.length === 0 && !portfolio.total_capital_usd) {
+    return '';
+  }
 
+  const lines: string[] = ['## User Portfolio (summary)', ''];
+
+  if (portfolio.total_capital_usd || portfolio.risk_budget_pct || portfolio.max_drawdown_pct) {
+    const parts: string[] = [];
+    if (portfolio.total_capital_usd) parts.push(`Capital: $${portfolio.total_capital_usd.toLocaleString()}`);
+    if (portfolio.risk_budget_pct) parts.push(`Risk/trade: ${portfolio.risk_budget_pct}%`);
+    if (portfolio.max_drawdown_pct) parts.push(`Max DD: ${portfolio.max_drawdown_pct}%`);
+    lines.push(parts.join(' · '));
+  }
+
+  if (portfolio.positions.length > 0) {
+    lines.push(`Open positions: ${portfolio.positions.length}`);
+    for (const pos of portfolio.positions) {
+      const target = pos.target_price ? `tgt ${pos.target_price} ${pos.currency}` : 'no target';
+      const stop = pos.stop_loss ? `stop ${pos.stop_loss}` : 'no stop';
+      lines.push(`- ${pos.ticker} ${pos.shares} @ ${pos.avg_cost} ${pos.currency} · ${pos.conviction} · ${target} · ${stop} · "${pos.thesis}"`);
+    }
+  }
+
+  if (portfolio.notes.length > 0) {
+    lines.push('');
+    lines.push('User notes:');
+    for (const note of portfolio.notes.slice(0, 5)) {
+      lines.push(`- ${note}`);
+    }
+  }
+
+  lines.push('');
+  lines.push('Call `portfolio_view` for the full structured data. `memory_search` for past conversations. `portfolio_remove` to close a trade (records P&L + lesson).');
+
+  return lines.join('\n');
+}
 /**
  * Default system prompt used when no specific prompt is provided.
  */
@@ -254,6 +299,8 @@ ${toolDescriptions}
 ${buildSkillsSection()}
 
 ${buildMemorySection(memoryFiles ?? [], memoryContext)}
+
+${buildPortfolioSection()}
 
 ## Behavior
 

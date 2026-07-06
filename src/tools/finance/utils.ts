@@ -2,6 +2,8 @@
  * Shared utilities for financial tools.
  */
 
+import { logger } from '../../utils/logger.js';
+
 /** Sub-tool timeout in milliseconds. Returns partial results on timeout. */
 export const SUB_TOOL_TIMEOUT_MS = 15_000;
 
@@ -25,4 +27,40 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label?: string):
       ),
     ),
   ]);
+}
+
+/**
+ * Generic JSON-fetch helper used by every roadmap provider. Labels errors with
+ * the provider name so chain fallbacks in meta-tools (e.g. news providers under
+ * `get_market_data`) surface which one failed. Mirrors the helper that lived
+ * inside `markets.ts` so behavior is identical for FX/World Bank.
+ */
+export async function fetchJson(
+  url: string,
+  label: string,
+  init: RequestInit = {},
+): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: { Accept: 'application/json', ...init.headers },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`[${label}] network error: ${message}`);
+    throw new Error(`[${label}] request failed: ${message}`);
+  }
+
+  if (!response.ok) {
+    const detail = `${response.status} ${response.statusText}`;
+    logger.error(`[${label}] error: ${detail}`);
+    throw new Error(`[${label}] request failed: ${detail}`);
+  }
+
+  return response.json().catch(() => {
+    const detail = `invalid JSON (${response.status} ${response.statusText})`;
+    logger.error(`[${label}] parse error: ${detail}`);
+    throw new Error(`[${label}] request failed: ${detail}`);
+  });
 }

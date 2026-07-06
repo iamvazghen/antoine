@@ -1,6 +1,7 @@
-import { Container, Markdown, Spacer } from '@mariozechner/pi-tui';
+import { Container, Markdown, Spacer, Text } from '@mariozechner/pi-tui';
 import { formatResponse } from '../utils/markdown-table.js';
 import { markdownTheme, theme } from '../theme.js';
+import { SourceChipsComponent } from './source-chips.js';
 
 export class AnswerBoxComponent extends Container {
   private readonly body: Markdown;
@@ -20,5 +21,10 @@ export class AnswerBoxComponent extends Container {
     // Prevent "⏺" from appearing on its own line when model output starts with newlines.
     const normalized = rendered.replace(/^\n+/, '');
     this.body.setText(`${theme.primary('⏺ ')}${normalized}`);
+  }
+
+  appendSources(urls: ReadonlyArray<string>) {
+    if (urls.length === 0) return;
+    this.addChild(new SourceChipsComponent(urls));
   }
 }

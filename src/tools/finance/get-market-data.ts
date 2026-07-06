@@ -3,10 +3,12 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import { AIMessage, ToolCall } from '@langchain/core/messages';
 import { z } from 'zod';
 import { callLlm } from '../../model/llm.js';
-import { formatToolResult } from '../types.js';
+import { formatToolResult, type SourceRef } from '../types.js';
 import { getCurrentDate } from '../../agent/prompts.js';
 import { withTimeout, SUB_TOOL_TIMEOUT_MS } from './utils.js';
 import { MARKET_DATA_FORMATTERS } from './formatters.js';
+import { getAllProviderLeaves } from './providers/index.js';
+import { getAllNewsLeaves } from '../news/index.js';
 
 /**
  * Rich description for the get_market_data tool.
@@ -29,6 +31,7 @@ Intelligent meta-tool for retrieving market data including prices, news, and ins
 - Insider trading activity
 - Institutional holdings (SEC 13F — who holds a security, what a filer holds)
 - Price move explanations ("why did X go up/down" → combines price + news)
+- Multi-region price data (US, EU, UK, JP, IN, HK, CN via EODHD's TICKER.EXCHANGE notation)
 
 ## When NOT to Use
 
@@ -73,6 +76,9 @@ const MARKET_DATA_TOOLS: StructuredToolInterface[] = [
   getCompanyNews,
   getInsiderTrades,
   getInstitutionalHoldings,
+  // Roadmap providers (only those with env keys set; getLeaves returns [] otherwise)
+  ...getAllProviderLeaves(),
+  ...getAllNewsLeaves(),
 ];
 
 // Create a map for quick tool lookup by name
@@ -80,6 +86,30 @@ const MARKET_DATA_TOOL_MAP = new Map(MARKET_DATA_TOOLS.map(t => [t.name, t]));
 
 // Build the router system prompt for market data
 function buildRouterPrompt(): string {
+  // Inventory of active roadmap providers (filtered out at runtime when env keys are missing).
+  const allProviders = [...getAllProviderLeaves(), ...getAllNewsLeaves()]
+    .map((t) => t.name)
+    .sort();
+  const providerList = allProviders.length > 0
+    ? `\n\n## Active Roadmap Providers (env-gated)
+
+The following provider tools are currently bound in addition to the built-in meta-tools. Use them when the built-in FinancialDatasets tools lack coverage (e.g. global exchanges, specific exchanges, alternative news sources):
+
+${allProviders.map((p) => `- \`${p}\``).join('\n')}
+
+Provider preference order for common queries:
+- US stock quote/snapshot (real-time): polygon_stock_snapshot → finnhub_quote → twelvedata_quote → fmp_company_profile → alphavantage_stock_quote → get_stock_price
+- US stock aggregates/historical: polygon_stock_aggregates → tiingo_eod_prices → eodhd_eod_prices → twelvedata_time_series → alphavantage_stock_time_series → get_stock_prices
+- Crypto price: coingecko_simple_price → cmc_quotes → alphavantage_crypto_rating → get_crypto_price_snapshot
+- Forex: alphavantage_fx_rate → twelvedata_fx_rate → polygon_forex_snapshot → get_fx_rates
+- Company news (ticker): marketaux_news → benzinga_news → newsapi_everything → get_company_news
+- Company profile/peers: fmp_company_profile → finnhub_company_profile → finnhub_peers
+- Analyst sentiment: finnhub_sentiment → finnhub_recommendation
+- Global equities (non-US, format TICKER.EXCHANGE): eodhd_eod_prices → eodhd_fundamentals → tiingo_eod_prices
+
+For non-US tickers, the EODHD format is REQUIRED (e.g., "VOD.LSE" for Vodafone on London, "7203.TSE" for Toyota, "RELIANCE.NSE" for Reliance India).`
+    : '';
+
   return `You are a market data routing assistant.
 Current date: ${getCurrentDate()}
 
@@ -91,6 +121,7 @@ Given a user's natural language query about market data, call the appropriate to
    - Apple → AAPL, Tesla → TSLA, Microsoft → MSFT, Amazon → AMZN
    - Google/Alphabet → GOOGL, Meta/Facebook → META, Nvidia → NVDA
    - Bitcoin → BTC, Ethereum → ETH, Solana → SOL
+   - For non-US tickers, use TICKER.EXCHANGE notation (e.g., VOD.LSE, 7203.TSE, RELIANCE.NSE, 0700.HK)
 
 2. **Date Inference**: Use schema-supported filters for date ranges:
    - "last month" → start_date 1 month ago, end_date today
@@ -98,25 +129,30 @@ Given a user's natural language query about market data, call the appropriate to
    - "YTD" → start_date Jan 1 of current year, end_date today
    - "2024" → start_date 2024-01-01, end_date 2024-12-31
 
-3. **Tool Selection**:
-   - For a current stock quote/snapshot (price, market cap, volume) → get_stock_price
-   - For historical stock prices over a date range → get_stock_prices
+3. **Tool Selection (built-in meta-tools)**:
+   - For a current US stock quote/snapshot (price, market cap, volume) → get_stock_price
+   - For historical US stock prices over a date range → get_stock_prices
    - For "what stocks are available" or ticker lookup → get_stock_tickers
    - For a current crypto price/snapshot → get_crypto_price_snapshot
    - For historical crypto prices over a date range → get_crypto_prices
    - For "what cryptos are available" or crypto ticker lookup → get_crypto_tickers
-   - For company-specific news, catalysts, recent announcements → get_company_news with ticker
-   - For broad market news (macro, rates, earnings, geopolitics) → get_company_news without ticker
+   - For company-specific news from Financial Datasets → get_company_news with ticker
+   - For broad market news → get_company_news without ticker
    - For insider buying/selling activity → get_insider_trades
    - For who holds a stock (largest holders, 13F holders of X) → get_institutional_holdings with ticker
-   - For a specific manager's portfolio (Citadel, Berkshire, BlackRock, etc.) → get_institutional_holdings with filer_name (the tool resolves name → CIK internally; do NOT make a separate lookup call)
+   - For a specific manager's portfolio (Citadel, Berkshire, BlackRock, etc.) → get_institutional_holdings with filer_name
    - For "why did X go up/down" → combine get_stock_price + get_company_news
-   - For "what's happening in the markets" → get_company_news without ticker
 
-4. **Efficiency**:
+4. **Tool Selection (roadmap providers — see "Active Roadmap Providers" below)**:
+   - Prefer the preferred provider for the query type per the table above
+   - When Financial Datasets lacks the data (e.g., a global ticker, an alt news source), fall back to the roadmap provider
+   - When a roadmap provider supports the query directly (e.g., benzinga_news for ticker-specific news), use it instead of the generic get_company_news
+
+5. **Efficiency**:
    - For current/latest price, use snapshot tools (not historical with limit 1)
    - For comparisons between assets, call the same tool for each ticker
    - Use the smallest date range that answers the question
+   - Issue multiple tool calls in a SINGLE turn when sub-queries are independent (they run in parallel)${providerList}
 
 Call the appropriate tool(s) now.`;
 }
@@ -192,27 +228,49 @@ export function createGetMarketData(model: string): DynamicStructuredTool {
         })
       );
 
-      // 4. Combine results
+      // 4. Combine results with numbered source citations.
       const successfulResults = results.filter((r) => r.error === null);
       const failedResults = results.filter((r) => r.error !== null);
 
-      // Collect all source URLs
-      const allUrls = results.flatMap((r) => r.sourceUrls);
+      // Build numbered source references; dedupe by URL.
+      const allSources: SourceRef[] = [];
+      const seenUrls = new Set<string>();
+      const citationsByResult = new Map<number, number[]>(); // resultIndex -> citation IDs
+      let nextCitation = 1;
+      successfulResults.forEach((r, i) => {
+        const ids: number[] = [];
+        for (const url of r.sourceUrls) {
+          if (typeof url !== 'string' || !url) continue;
+          const existing = allSources.find((s) => s.url === url);
+          if (existing) {
+            ids.push(existing.id);
+            continue;
+          }
+          if (seenUrls.has(url)) continue;
+          seenUrls.add(url);
+          const id = nextCitation++;
+          allSources.push({ id, url, provider: r.tool });
+          ids.push(id);
+        }
+        citationsByResult.set(i, ids);
+      });
 
-      // Build combined data structure
+      // Build combined data structure.
       const combinedData: Record<string, unknown> = {};
-
-      for (const result of successfulResults) {
-        // Use tool name as key, or tool_ticker for multiple calls to same tool
+      successfulResults.forEach((result, i) => {
         const ticker = (result.args as Record<string, unknown>).ticker as string | undefined;
         const key = ticker ? `${result.tool}_${ticker}` : result.tool;
         const formatter = MARKET_DATA_FORMATTERS[result.tool];
-        combinedData[key] = formatter
+        const formatted = formatter
           ? formatter(result.data, result.args as Record<string, unknown>)
           : result.data;
-      }
+        combinedData[key] = {
+          data: formatted,
+          citations: citationsByResult.get(i) ?? [],
+          provider: result.tool,
+        };
+      });
 
-      // Add errors if any
       if (failedResults.length > 0) {
         combinedData._errors = failedResults.map((r) => ({
           tool: r.tool,
@@ -221,7 +279,14 @@ export function createGetMarketData(model: string): DynamicStructuredTool {
         }));
       }
 
-      return formatToolResult(combinedData, allUrls);
+      const allUrls = allSources.map((s) => s.url);
+      return JSON.stringify({
+        data: combinedData,
+        sourceUrls: allUrls,
+        sources: allSources,
+        provider: 'get_market_data router',
+        asOf: new Date().toISOString(),
+      });
     },
   });
 }

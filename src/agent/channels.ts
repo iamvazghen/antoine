@@ -15,6 +15,9 @@ const CLI_PROFILE: ChannelProfile = {
     'Avoid over-engineering responses - match the scope of your answer to the question',
     'Never ask users to provide raw data, paste values, or reference JSON/API internals - users ask questions, they don\'t have access to financial APIs',
     'If data is incomplete, answer with what you have without exposing implementation details',
+    'Cite every factual claim (price, ratio, news headline) with an in-line source marker like [1], [2], [3]. The numbered source list is shown beneath the answer — match the numbers exactly. Do not invent source ids; only cite ids that appear in the tool results you received.',
+    'When providers give data of different freshness (e.g., a 15-minute-old quote vs a 30-second-old quote), flag the staleness on the most time-sensitive number ("$250 (Polygon, 14:32 UTC)" instead of just "$250").',
+    'For HIGH-CONVICTION trades (the user asks "should I buy X", "is X a buy here", "would you own X", or anything that ends with the user committing capital), AUTO-FIRE the `run_debate` tool as a single tool call early in your turn. The user gets the bull + bear + quant + macro + judge synthesis in one shot. Do NOT skip this even if your own initial view is clear — that is exactly when contrarian pressure is most valuable.',
   ],
   responseFormat: [
     'Keep casual responses brief and direct',

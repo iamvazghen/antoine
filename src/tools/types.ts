@@ -1,6 +1,23 @@
+export interface SourceRef {
+  /** Stable numeric citation ID (assigned by the meta-tool router). */
+  id: number;
+  /** Source URL. */
+  url: string;
+  /** Provider name (e.g. "polygon", "fmp", "alphavantage"). */
+  provider?: string;
+  /** Optional human title for the source (filing name, headline, etc.). */
+  title?: string;
+}
+
 export interface ToolResult {
   data: unknown;
   sourceUrls?: string[];
+  /** Numbered source references for in-line `[1]` citation. */
+  sources?: SourceRef[];
+  /** ISO timestamp of when the underlying data was fetched (or served from cache). */
+  asOf?: string;
+  /** Provider name that produced the data. */
+  provider?: string;
 }
 
 export function formatToolResult(data: unknown, sourceUrls?: string[]): string {
@@ -8,6 +25,29 @@ export function formatToolResult(data: unknown, sourceUrls?: string[]): string {
   if (sourceUrls?.length) {
     result.sourceUrls = sourceUrls;
   }
+  return JSON.stringify(result);
+}
+
+/**
+ * Format a ProviderResult-shaped call (with freshness metadata + a single
+ * numbered source reference). Used by every meta-tool router so the agent
+ * sees consistent provenance on every tool result.
+ */
+export function formatProviderResult(
+  data: unknown,
+  citationId: number,
+  url: string,
+  provider: string,
+  asOf?: string,
+  title?: string,
+): string {
+  const result: ToolResult = {
+    data,
+    sourceUrls: [url],
+    sources: [{ id: citationId, url, provider, title }],
+    provider,
+  };
+  if (asOf) result.asOf = asOf;
   return JSON.stringify(result);
 }
 

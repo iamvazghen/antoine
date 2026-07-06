@@ -15,11 +15,12 @@ import { logger } from '@/utils';
 import { classifyError, isNonRetryableError } from '@/utils/errors';
 import { resolveProvider, getProviderById } from '@/providers';
 
-// FreeLLMAPI auto-routing is the default: the local proxy ignores the model id
-// and routes to whichever free model is available, so 'freellmapi:auto' is a
-// stable default that requires no per-provider API key.
-export const DEFAULT_PROVIDER = 'freellmapi';
-export const DEFAULT_MODEL = 'freellmapi:auto';
+// minimax is the default: the user provided a custom OpenAI-compatible key for a
+// proxy that fronts minimax m2.5. Set MINIMAX_BASE_URL in .env to point at the
+// proxy; if unset, the placeholder baseUrlDefault is used (which will fail until
+// configured — model-selection.ts guides the user to set it).
+export const DEFAULT_PROVIDER = 'minimax';
+export const DEFAULT_MODEL = 'minimax:MiniMax-M2.5';
 
 /**
  * Gets the fast model variant for the given provider.
@@ -144,6 +145,15 @@ const MODEL_FACTORIES: Record<string, ModelFactory> = {
       ...opts,
       ...(process.env.OLLAMA_BASE_URL ? { baseUrl: process.env.OLLAMA_BASE_URL } : {}),
     }),
+  minimax: (name, opts) => {
+    const baseURL = process.env.MINIMAX_BASE_URL || 'https://api.minimax.example/v1';
+    return new ChatOpenAI({
+      model: name.replace(/^minimax:/, ''),
+      ...opts,
+      apiKey: getApiKey('MINIMAX_API_KEY'),
+      configuration: { baseURL },
+    });
+  },
 };
 
 const DEFAULT_FACTORY: ModelFactory = (name, opts) =>

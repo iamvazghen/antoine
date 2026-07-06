@@ -3,6 +3,7 @@ import { Editor, Key, matchesKey } from '@mariozechner/pi-tui';
 export class CustomEditor extends Editor {
   onEscape?: () => void;
   onCtrlC?: () => void;
+  onCtrlP?: () => void;
   onSlashChange?: (text: string) => void;
   onSlashSelect?: () => void;
   onSlashNavigate?: (direction: 'up' | 'down') => void;
@@ -72,6 +73,11 @@ export class CustomEditor extends Editor {
 
     if (matchesKey(data, Key.ctrl('c')) && this.onCtrlC) {
       this.onCtrlC();
+      return;
+    }
+
+    if (matchesKey(data, Key.ctrl('p')) && this.onCtrlP) {
+      this.onCtrlP();
       return;
     }
 

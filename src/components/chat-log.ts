@@ -6,6 +6,7 @@ import { AnswerBoxComponent } from './answer-box.js';
 import { ToolEventComponent } from './tool-event.js';
 import { SubagentGroupComponent } from './subagent-group.js';
 import { UserQueryComponent } from './user-query.js';
+import { SourceChipsComponent } from './source-chips.js';
 
 function formatDuration(ms: number): string {
   if (ms < 1000) {
@@ -375,5 +376,29 @@ export class ChatLogComponent extends Container {
   addPerformanceStats(duration: number, _tokenUsage?: TokenUsage, _tokensPerSecond?: number) {
     this.addChild(new Spacer(1));
     this.addChild(new Text(`${theme.muted('✻ ')}${theme.muted(formatDuration(duration))}`, 0, 0));
+  }
+
+  /** Append a row of source chips from URLs cited by tool calls in the turn. */
+  addSourceChips(urls: ReadonlyArray<string> | ReadonlyArray<{ id: number; url: string }>) {
+    if (urls.length === 0) return;
+    this.addChild(new SourceChipsComponent(urls));
+  }
+
+  /** Append a freshness stamp line ("Sources: Polygon, FRED · as of 14:32 UTC"). */
+  addFreshnessStamp(provider: string | undefined, asOf: string | undefined) {
+    if (!provider && !asOf) return;
+    const providerLabel = provider ? theme.primary(provider) : theme.muted('unknown source');
+    let timeLabel = '';
+    if (asOf) {
+      try {
+        const d = new Date(asOf);
+        if (!isNaN(d.getTime())) {
+          timeLabel = theme.muted(` · as of ${d.toISOString().slice(11, 16)} UTC`);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    this.addChild(new Text(`${theme.muted('⏺ provenance: ')}${providerLabel}${timeLabel}`, 0, 0));
   }
 }

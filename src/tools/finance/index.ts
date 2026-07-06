@@ -17,4 +17,16 @@ export {
   getEconomicIndicators,
   ECONOMIC_INDICATORS_DESCRIPTION,
 } from './markets.js';
+export { getCatalystCalendar, GET_CATALYST_CALENDAR_DESCRIPTION } from './get-catalyst-calendar.js';
+export { getGlobalStock, GET_GLOBAL_STOCK_DESCRIPTION } from './get-global-stock.js';
+export { getCommodity, GET_COMMODITY_DESCRIPTION } from './get-commodity.js';
+export {
+  getRegion,
+  getRegionByCountry,
+  parseTicker,
+  composeTicker,
+  listSupportedExchanges,
+  formatMarketCap,
+  type RegionMeta,
+} from './region-helpers.js';
 

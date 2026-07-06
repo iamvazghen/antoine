@@ -36,6 +36,13 @@ import {
   createModelSelector,
   createProviderSelector,
   createSearchProviderSelector,
+  StatusBarComponent,
+  CommandPaletteComponent,
+  buildDefaultPaletteItems,
+  WatchlistComponent,
+  CostCapOverlayComponent,
+  type StatusStats,
+  type PaletteAction,
 } from './components/index.js';
 import { editorTheme, theme, setActiveTheme, getActiveTheme, THEMES, type ThemeName } from './theme.js';
 import { getSetting, setSetting } from './utils/config.js';
@@ -49,6 +56,11 @@ import {
   type SessionFile,
   type SessionSummary,
 } from './utils/session-store.js';
+import { estimateCost, formatUsd } from './utils/cost.js';
+import { getActiveProviderNames, getAllProviderNames } from './tools/finance/providers/index.js';
+import { getActiveNewsProviderNames, getAllNewsProviderNames } from './tools/news/index.js';
+import { PROVIDERS, getProviderById } from './providers.js';
+import { PROVIDERS as MODEL_PROVIDERS, getModelsForProvider } from './utils/model.js';
 
 /** Parse a `--resume [id]` / `-r [id]` / `resume [id]` startup request. */
 function parseResumeArg(argv: string[]): { resume: boolean; id?: string } {
@@ -327,6 +339,29 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
         }
         if (lastItem.status === 'complete' && lastRenderedStatus !== 'complete') {
           chatLog.addPerformanceStats(lastItem.duration ?? 0, lastItem.tokenUsage, lastItem.tokensPerSecond);
+          // Append inline source citations + freshness stamp from this turn's tool results.
+          const turnSources = collectTurnSourceUrls(lastItem);
+          if (turnSources.length > 0) {
+            chatLog.addSourceChips(turnSources);
+          }
+          const provenance = collectTurnProvenance(lastItem);
+          if (provenance.provider || provenance.asOf) {
+            chatLog.addFreshnessStamp(provenance.provider, provenance.asOf);
+          }
+          // Accumulate session-wide token usage + cost estimate.
+          if (lastItem.tokenUsage) {
+            sessionTokensIn += lastItem.tokenUsage.inputTokens ?? 0;
+            sessionTokensOut += lastItem.tokenUsage.outputTokens ?? 0;
+            const added = estimateCost(modelSelection.model, sessionTokensIn, sessionTokensOut);
+            sessionCostUsd = added;
+          }
+          refreshStatusBar(lastItem);
+          // Trigger cost-cap warning once per session.
+          if (!costCapAcknowledged && sessionCostUsd >= costCapUsd) {
+            costCapAcknowledged = true;
+            costCapOverlayVisible = true;
+            showCostCapOverlay();
+          }
         }
         if (lastItem.status === 'interrupted' && lastRenderedStatus !== 'interrupted') {
           // Stop all active tool spinners on interrupt
@@ -367,17 +402,138 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
   const debugPanel = new DebugPanelComponent(8, !!process.env.ANTOINE_DEBUG);
   const spacer = new Spacer(1);
 
+  // Elite TUI additions
+  const statusBar = new StatusBarComponent();
+  const watchlist = new WatchlistComponent(22);
+  // Session cost tracker — accumulates across all turns
+  let sessionCostUsd = 0;
+  let sessionTokensIn = 0;
+  let sessionTokensOut = 0;
+  // Cost cap (default $5; persisted via /cost cap)
+  const costCapUsd = getSetting<number>('costCapUsd', 5);
+  let costCapAcknowledged = false;
+  let costCapOverlayVisible = false;
+
+  // Watchlist state
+  let watchedTickers: string[] = getSetting<string[]>('watchlist', []);
+  watchlist.setTickers(watchedTickers);
+
+  // Recent tickers mentioned (for command palette)
+  const recentTickers: string[] = [];
+
   // Build the component tree ONCE — stable structure, no root.clear()
   root.addChild(intro);
   root.addChild(chatLog);
   root.addChild(errorText);
   root.addChild(workingIndicator);
+  root.addChild(statusBar);
+  root.addChild(watchlist);
   root.addChild(spacer);
   root.addChild(editor);
   root.addChild(hintBar);
   root.addChild(debugPanel);
   tui.addChild(root);
   initSpinner(tui);
+
+  /** Update the persistent status bar with the latest stats. */
+  const refreshStatusBar = (currentItem?: any) => {
+    const providerName = getProviderById(modelSelection.provider)?.displayName ?? modelSelection.provider;
+    const providerLabel = `${providerName} · ${modelSelection.model}`;
+    const stats: StatusStats = {
+      inputTokens: sessionTokensIn,
+      outputTokens: sessionTokensOut,
+      costUsd: sessionCostUsd,
+      iter: currentItem?.iteration ?? 0,
+      maxIter: 20,
+      tokensPerSecond: currentItem?.tokensPerSecond ?? null,
+    };
+    statusBar.setProvider(providerLabel);
+    statusBar.setStats(stats);
+  };
+  refreshStatusBar();
+
+  /** Collect unique sourceUrls from this turn's tool results (for inline citation chips). */
+  const collectTurnSourceUrls = (item: any): Array<{ id: number; url: string; provider?: string }> => {
+    const seen = new Set<string>();
+    const out: Array<{ id: number; url: string; provider?: string }> = [];
+    for (const display of item.events ?? []) {
+      const ev = display?.endEvent;
+      if (ev?.type === 'tool_end' && typeof ev.result === 'string') {
+        try {
+          const parsed = JSON.parse(ev.result);
+          // Prefer the new `sources` field (numbered citations); fall back to plain URLs.
+          if (Array.isArray(parsed?.sources)) {
+            for (const s of parsed.sources) {
+              if (typeof s?.url === 'string' && !seen.has(s.url)) {
+                seen.add(s.url);
+                out.push({
+                  id: typeof s.id === 'number' ? s.id : out.length + 1,
+                  url: s.url,
+                  provider: typeof s.provider === 'string' ? s.provider : undefined,
+                });
+              }
+            }
+          } else if (Array.isArray(parsed?.sourceUrls)) {
+            for (const u of parsed.sourceUrls) {
+              if (typeof u === 'string' && !seen.has(u)) {
+                seen.add(u);
+                out.push({ id: out.length + 1, url: u });
+              }
+            }
+          }
+        } catch {
+          // not JSON, skip
+        }
+      }
+    }
+    return out;
+  };
+
+  /** Collect freshness stamps (provider + asOf) for the freshness line. */
+  const collectTurnProvenance = (item: any): { provider?: string; asOf?: string } => {
+    const providers: string[] = [];
+    let asOf: string | undefined;
+    for (const display of item.events ?? []) {
+      const ev = display?.endEvent;
+      if (ev?.type === 'tool_end' && typeof ev.result === 'string') {
+        try {
+          const parsed = JSON.parse(ev.result);
+          if (typeof parsed?.provider === 'string' && !providers.includes(parsed.provider)) {
+            providers.push(parsed.provider);
+          }
+          if (!asOf && typeof parsed?.asOf === 'string') asOf = parsed.asOf;
+        } catch {
+          // skip
+        }
+      }
+    }
+    return { provider: providers.join(' · '), asOf };
+  };
+
+  /** Render the cost-cap warning as an overlay. */
+  const showCostCapOverlay = () => {
+    const overlay = new CostCapOverlayComponent(sessionCostUsd, costCapUsd);
+    overlay.onSelect = (decision) => {
+      if (decision === 'continue') {
+        // Effectively disable the cap for this session.
+        costCapAcknowledged = true;
+      } else if (decision === 'switch-model') {
+        modelSelection.startSelection();
+      } else if (decision === 'end-session') {
+        tui.stop();
+        process.exit(0);
+      }
+      costCapOverlayVisible = false;
+      renderSelectionOverlay();
+      tui.requestRender();
+    };
+    overlay.onCancel = () => {
+      costCapOverlayVisible = false;
+      renderSelectionOverlay();
+      tui.requestRender();
+    };
+    showScreenView('Cost cap reached', '', overlay, 'Choose an option above', overlay);
+  };
 
   // Render throttle for agent events (~30fps max)
   let renderPending = false;
@@ -404,12 +560,17 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
   const HELP_TEXT = `Keyboard Shortcuts
   esc          Interrupt query / clear input
    ctrl+c       Exit Antoine
+  ctrl+p       Open command palette (fuzzy slash / session / ticker search)
   /model       Switch LLM provider and model
   /search      Choose preferred web search provider
-  /theme       Switch color theme (emerald / sapphire / amethyst)
+  /theme       Switch color theme (emerald · sapphire · amethyst · obsidian)
   /rules       Show research rules
   /sessions    List saved sessions you can resume
   /resume      Resume your most recent previous session
+  /providers   Show which roadmap data providers are active
+  /cost        Show session cost or set a cap: /cost cap 5
+  /watch       Add tickers to the watchlist: /watch AAPL NVDA
+  /unwatch     Remove tickers
   /clear       Clear conversation
   ↑ / ↓        Navigate input history
 
@@ -444,7 +605,9 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
     tui.requestRender();
   };
 
-  const handleSlashCommand = async (command: string) => {
+  const handleSlashCommand = async (command: string, rawQuery: string) => {
+    // Extract arguments: everything after `/command ` (or just the command if no args).
+    const rest = rawQuery.replace(/^\/\S+\s*/, '').trim();
     switch (command) {
       case 'model':
         modelSelection.startSelection();
@@ -534,10 +697,181 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
         chatLog.addChild(new Text(theme.muted(HELP_TEXT), 0, 0));
         tui.requestRender();
         break;
+      case 'palette': {
+        openCommandPalette();
+        break;
+      }
+      case 'providers': {
+        chatLog.addChild(new Spacer(1));
+        chatLog.addChild(new Text(theme.primary('Roadmap data providers'), 0, 0));
+        chatLog.addChild(new Spacer(1));
+        const allNames = new Set([...getAllProviderNames(), ...getAllNewsProviderNames()]);
+        const activeFinance = new Set(getActiveProviderNames());
+        const activeNews = new Set(getActiveNewsProviderNames());
+        for (const name of [...allNames].sort()) {
+          const isActive = activeFinance.has(name) || activeNews.has(name);
+          const marker = isActive ? theme.success('●') : theme.muted('○');
+          const label = isActive ? theme.primary(name) : theme.muted(name);
+          chatLog.addChild(new Text(`  ${marker} ${label}`, 0, 0));
+        }
+        chatLog.addChild(new Spacer(1));
+        const activeCount = activeFinance.size + activeNews.size;
+        chatLog.addChild(
+          new Text(theme.muted(`  ${activeCount} of ${allNames.size} providers active`), 0, 0),
+        );
+        tui.requestRender();
+        break;
+      }
+      case 'cost': {
+        // /cost [cap N]
+        const capMatch = rest.match(/^cap\s+(\d+(?:\.\d+)?)/i);
+        if (capMatch) {
+          const cap = Number(capMatch[1]);
+          setSetting('costCapUsd', cap);
+          chatLog.addChild(new Spacer(1));
+          chatLog.addChild(new Text(`${theme.success('⏺')} ${theme.primary(`Cost cap set to ${formatUsd(cap)}`)}`, 0, 0));
+        } else {
+          chatLog.addChild(new Spacer(1));
+          chatLog.addChild(new Text(`${theme.primary('Session cost')} ${formatUsd(sessionCostUsd)} · cap ${formatUsd(costCapUsd)}`, 0, 0));
+          chatLog.addChild(new Text(theme.muted(`  ↓ ${sessionTokensIn} in · ↑ ${sessionTokensOut} out`), 0, 0));
+        }
+        tui.requestRender();
+        break;
+      }
+      case 'watch': {
+        // /watch AAPL NVDA MSFT
+        const tickers = rest.split(/\s+/).filter(Boolean).map((t) => t.toUpperCase());
+        if (tickers.length === 0) {
+          chatLog.addChild(new Spacer(1));
+          chatLog.addChild(new Text(theme.muted('Usage: /watch AAPL NVDA MSFT'), 0, 0));
+        } else {
+          for (const t of tickers) {
+            if (!watchedTickers.includes(t)) watchedTickers.push(t);
+            if (!recentTickers.includes(t)) recentTickers.unshift(t);
+          }
+          setSetting('watchlist', watchedTickers);
+          watchlist.setTickers(watchedTickers);
+          // Kick off an immediate refresh
+          void refreshWatchlist();
+          chatLog.addChild(new Spacer(1));
+          chatLog.addChild(new Text(theme.primary(`Watching ${tickers.join(', ')}`), 0, 0));
+        }
+        tui.requestRender();
+        break;
+      }
+      case 'unwatch': {
+        const tickers = rest.split(/\s+/).filter(Boolean).map((t) => t.toUpperCase());
+        for (const t of tickers) {
+          watchedTickers = watchedTickers.filter((x) => x !== t);
+        }
+        setSetting('watchlist', watchedTickers);
+        watchlist.setTickers(watchedTickers);
+        chatLog.addChild(new Spacer(1));
+        chatLog.addChild(new Text(theme.muted(`Stopped watching ${tickers.join(', ') || 'all'}`), 0, 0));
+        tui.requestRender();
+        break;
+      }
+      case 'watchlist': {
+        chatLog.addChild(new Spacer(1));
+        if (watchedTickers.length === 0) {
+          chatLog.addChild(new Text(theme.muted('No tickers watched. /watch AAPL NVDA'), 0, 0));
+        } else {
+          chatLog.addChild(new Text(theme.primary(`Watchlist (${watchedTickers.length})`), 0, 0));
+          chatLog.addChild(new Text(theme.muted(watchedTickers.join(' · ')), 0, 0));
+        }
+        tui.requestRender();
+        break;
+      }
     }
   };
 
   // Slash callbacks are wired after renderSelectionOverlay is defined (below)
+
+  /** Render and focus the command palette as a single-line overlay. */
+  const openCommandPalette = async () => {
+    let sessions: Array<{ id: string; title: string }> = [];
+    try {
+      const list = await listSessions();
+      sessions = list.slice(0, 8).map((s) => ({ id: s.id, title: s.title }));
+    } catch {
+      // ignore
+    }
+    const items = buildDefaultPaletteItems({
+      sessions,
+      providers: PROVIDERS.map((p) => ({ id: p.id, displayName: p.displayName })),
+      modelsByProvider: Object.fromEntries(
+        MODEL_PROVIDERS.map((p) => [p.providerId, p.models]),
+      ),
+      recentTickers,
+    });
+    const palette = new CommandPaletteComponent(tui, items);
+    palette.onSelect = (action: PaletteAction) => {
+      void (async () => {
+        switch (action.kind) {
+          case 'slash':
+            await handleSlashCommand(action.command, `/${action.command}`);
+            break;
+          case 'session':
+            {
+              const full = await loadSession(action.id);
+              if (full) resumeInto(full);
+            }
+            break;
+          case 'provider':
+            modelSelection.startSelection();
+            break;
+          case 'model':
+            modelSelection.startSelection();
+            break;
+          case 'ticker':
+            await handleSubmit(`Show me the latest news and price for ${action.symbol}`);
+            break;
+        }
+      })();
+    };
+    palette.onCancel = () => {
+      renderSelectionOverlay();
+      tui.requestRender();
+    };
+    showScreenView(
+      'Command Palette',
+      'Fuzzy search · slash, sessions, providers, models, tickers',
+      palette,
+      'Esc to close',
+      palette,
+    );
+  };
+
+  /** Fetch fresh quotes for every watched ticker. Best-effort; never throws. */
+  const refreshWatchlist = async () => {
+    if (watchedTickers.length === 0) return;
+    // Ponytail: use the cheapest snapshot tool we have. Today that's
+    // `get_stock_price` (Financial Datasets). Providers gracefully throw
+    // when their key is missing, so a missing key just leaves the cell empty.
+    try {
+      const { getStockPrice } = await import('./tools/finance/stock-price.js');
+      for (const t of watchedTickers) {
+        try {
+          const raw = await getStockPrice.invoke({ ticker: t });
+          const parsed = JSON.parse(raw as string);
+          const snap = parsed.data?.snapshot ?? parsed.data;
+          const price = Number(snap?.price ?? snap?.close ?? snap?.last?.price ?? null);
+          const previous = watchlist['quotes']?.get?.(t);
+          const history = [...(previous?.history ?? []), price].filter((n) => Number.isFinite(n)).slice(-30);
+          watchlist.setQuote(t, Number.isFinite(price) ? price : null, history);
+        } catch {
+          // ignore individual ticker errors
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Kick off an initial watchlist refresh after refreshWatchlist is defined.
+  if (watchedTickers.length > 0) {
+    void refreshWatchlist();
+  }
 
   const handleSubmit = async (query: string) => {
     if (query.toLowerCase() === 'exit' || query.toLowerCase() === 'quit') {
@@ -548,10 +882,10 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
 
     // Handle all slash commands
     if (query.startsWith('/')) {
-      const command = query.slice(1).trim().toLowerCase();
+      const command = query.slice(1).split(/\s+/)[0].trim().toLowerCase();
       slashActive = false;
       slashSuggestions = [];
-      await handleSlashCommand(command);
+      await handleSlashCommand(command, query);
       return;
     }
 
@@ -624,6 +958,11 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
     process.exit(0);
   };
 
+  editor.onCtrlP = () => {
+    // Open the command palette regardless of whether the editor has text.
+    void openCommandPalette();
+  };
+
   /**
    * Update component state without rebuilding the tree.
    * The root is built once at init — this only changes text/hints/visibility.
@@ -681,6 +1020,8 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
     root.addChild(chatLog);
     root.addChild(errorText);
     root.addChild(workingIndicator);
+    root.addChild(statusBar);
+    root.addChild(watchlist);
     root.addChild(spacer);
     root.addChild(editor);
     root.addChild(hintBar);
@@ -1033,7 +1374,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
       slashActive = false;
       slashSuggestions = [];
       editor.setText('');
-      void handleSlashCommand(selected.name);
+      void handleSlashCommand(selected.name, `/${selected.name}`);
     }
     updateView();
     tui.requestRender();

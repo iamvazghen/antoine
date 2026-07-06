@@ -34,6 +34,12 @@ const PROVIDER_MODELS: Record<string, Model[]> = {
     { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' },
     { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash' },
   ],
+  minimax: [
+    { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5' },
+    { id: 'MiniMax-M2.5-highspeed', displayName: 'MiniMax M2.5 High-Speed' },
+    { id: 'MiniMax-M3', displayName: 'MiniMax M3' },
+    { id: 'MiniMax-M2.7', displayName: 'MiniMax M2.7' },
+  ],
 };
 
 export const PROVIDERS: Provider[] = PROVIDER_DEFS.map((provider) => ({

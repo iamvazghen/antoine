@@ -1,33 +1,17 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { formatToolResult } from '../types.js';
-import { logger } from '../../utils/logger.js';
+import { fetchJson } from './utils.js';
 
 /**
  * Additional financial-market integrations backed by free, key-less public APIs:
  *   - Foreign-exchange rates  → Frankfurter (European Central Bank reference rates)
  *   - Macroeconomic indicators → World Bank Open Data
+ *   - US macro time series     → FRED (St. Louis Fed) — gated by FRED_API_KEY
  *
  * These broaden Antoine's coverage beyond the equities/crypto data provided by
- * Financial Datasets, and require no additional credentials.
+ * Financial Datasets. FX and World Bank need no key; FRED is opt-in via .env.
  */
-
-async function fetchJson(url: string, label: string): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetch(url, { headers: { Accept: 'application/json' } });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`[${label}] network error: ${message}`);
-    throw new Error(`[${label}] request failed: ${message}`);
-  }
-  if (!response.ok) {
-    const detail = `${response.status} ${response.statusText}`;
-    logger.error(`[${label}] error: ${detail}`);
-    throw new Error(`[${label}] request failed: ${detail}`);
-  }
-  return response.json();
-}
 
 // ---------------------------------------------------------------------------
 // Foreign exchange rates (Frankfurter — ECB reference rates, no API key)
@@ -178,6 +162,115 @@ export const getEconomicIndicators = new DynamicStructuredTool({
         indicator: mapping.label,
         indicatorCode: mapping.code,
         country,
+        observations,
+      },
+      [url.toString()],
+    );
+  },
+});
+
+// ---------------------------------------------------------------------------
+// FRED — US Federal Reserve Economic Data (St. Louis Fed)
+// ---------------------------------------------------------------------------
+
+const FRED_SERIES: Record<string, { code: string; label: string; units?: string }> = {
+  fed_funds: { code: 'DFF', label: 'Federal Funds Effective Rate', units: 'percent' },
+  cpi: { code: 'CPIAUCSL', label: 'Consumer Price Index (All Urban Consumers)', units: 'index' },
+  cpi_yoy: { code: 'CPIAUCSL', label: 'Consumer Price Index (YoY % change computed)' },
+  treasury_10y: { code: 'DGS10', label: '10-Year Treasury Constant Maturity Rate', units: 'percent' },
+  treasury_2y: { code: 'DGS2', label: '2-Year Treasury Constant Maturity Rate', units: 'percent' },
+  unemployment: { code: 'UNRATE', label: 'Unemployment Rate', units: 'percent' },
+  gdp: { code: 'GDP', label: 'Gross Domestic Product', units: 'billions of $' },
+  pce: { code: 'PCEPI', label: 'Personal Consumption Expenditures Price Index', units: 'index' },
+  m2: { code: 'M2SL', label: 'M2 Money Stock', units: 'billions of $' },
+};
+
+export const FRED_DESCRIPTION = `
+Fetches US Federal Reserve Economic Data (FRED) time series from the St. Louis Fed. Use for:
+- Fed funds rate (DFF), Treasury yields (DGS10, DGS2)
+- CPI / inflation (CPIAUCSL, PCEPI)
+- Unemployment (UNRATE)
+- GDP, M2 money supply
+
+Pick a series by name (e.g. 'fed_funds', 'cpi', 'treasury_10y', 'unemployment'). Date range defaults to the last 5 years. Requires FRED_API_KEY.
+`.trim();
+
+const FredInputSchema = z.object({
+  series: z
+    .enum([
+      'fed_funds',
+      'cpi',
+      'cpi_yoy',
+      'treasury_10y',
+      'treasury_2y',
+      'unemployment',
+      'gdp',
+      'pce',
+      'm2',
+    ])
+    .describe('Which FRED series to fetch.'),
+  start_date: z.string().optional().describe('Start date (YYYY-MM-DD). Defaults to 5 years ago.'),
+  end_date: z.string().optional().describe('End date (YYYY-MM-DD). Defaults to today.'),
+});
+
+export const getFredSeries = new DynamicStructuredTool({
+  name: 'get_fred_series',
+  description:
+    'Fetches a US Federal Reserve (FRED) macroeconomic time series. Covers Fed funds, Treasury yields, CPI/inflation, unemployment, GDP, and money supply.',
+  schema: FredInputSchema,
+  func: async (input) => {
+    const apiKey = process.env.FRED_API_KEY;
+    if (!apiKey) {
+      throw new Error('[FRED API] FRED_API_KEY is not set');
+    }
+
+    const meta = FRED_SERIES[input.series];
+    const today = new Date();
+    const endYear = input.end_date
+      ? input.end_date.slice(0, 4)
+      : String(today.getFullYear());
+    const startYear = input.start_date
+      ? input.start_date.slice(0, 4)
+      : String(today.getFullYear() - 5);
+
+    const url = new URL('https://api.stlouisfed.org/fred/series/observations');
+    url.searchParams.set('series_id', meta.code);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('file_type', 'json');
+    url.searchParams.set('observation_start', `${startYear}-01-01`);
+    url.searchParams.set('observation_end', `${endYear}-12-31`);
+
+    const raw = (await fetchJson(url.toString(), 'FRED API')) as {
+      observations?: Array<{ date: string; value: string }>;
+    };
+    const raw_obs = (raw.observations ?? []).filter((o) => o.value !== '.');
+
+    // CPI YoY needs percent change vs same month prior year.
+    let observations: Array<{ date: string; value: number | null }> = raw_obs.map((o) => ({
+      date: o.date,
+      value: Number(o.value),
+    }));
+    if (input.series === 'cpi_yoy') {
+      const byMonth = new Map(observations.map((o) => [o.date.slice(0, 7), o.value] as const));
+      observations = observations.map((o) => {
+        const yyyymm = o.date.slice(0, 4) + o.date.slice(5, 7);
+        void yyyymm;
+        const prior = byMonth.get(o.date.slice(0, 4) === startYear ? '' : '');
+        const yyyy = Number(o.date.slice(0, 4));
+        const priorMonth = `${yyyy - 1}${o.date.slice(5)}`;
+        const priorValue = byMonth.get(priorMonth.slice(0, 7));
+        if (typeof o.value === 'number' && typeof priorValue === 'number' && priorValue !== 0) {
+          return { date: o.date, value: ((o.value - priorValue) / priorValue) * 100 };
+        }
+        return { date: o.date, value: null };
+      }).filter((o) => o.value !== null);
+    }
+
+    return formatToolResult(
+      {
+        series: input.series,
+        label: meta.label,
+        units: meta.units,
         observations,
       },
       [url.toString()],

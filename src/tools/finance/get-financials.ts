@@ -3,10 +3,11 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import { AIMessage, ToolCall } from '@langchain/core/messages';
 import { z } from 'zod';
 import { callLlm } from '../../model/llm.js';
-import { formatToolResult } from '../types.js';
+import { formatToolResult, type SourceRef } from '../types.js';
 import { getCurrentDate } from '../../agent/prompts.js';
 import { withTimeout, SUB_TOOL_TIMEOUT_MS } from './utils.js';
 import { FINANCIAL_FORMATTERS } from './formatters.js';
+import { getAllProviderLeaves } from './providers/index.js';
 
 /**
  * Rich description for the get_financials tool.
@@ -70,6 +71,8 @@ const FINANCE_TOOLS: StructuredToolInterface[] = [
   getHistoricalKeyRatios,
   // Other Data
   getFinancialSegments,
+  // Roadmap providers (env-gated)
+  ...getAllProviderLeaves(),
 ];
 
 // Create a map for quick tool lookup by name
@@ -77,6 +80,25 @@ const FINANCE_TOOL_MAP = new Map(FINANCE_TOOLS.map(t => [t.name, t]));
 
 // Build the router system prompt - simplified since LLM sees tool schemas
 function buildRouterPrompt(): string {
+  const allProviders = getAllProviderLeaves().map((t) => t.name).sort();
+  const providerSection = allProviders.length > 0
+    ? `\n\n## Active Roadmap Providers (env-gated)
+
+The following provider tools are currently bound. Prefer them when the built-in Financial Datasets tools lack coverage:
+
+${allProviders.map((p) => `- \`${p}\``).join('\n')}
+
+Provider preference order for common queries:
+- US fundamentals (income/balance/cash flow): fmp_income_statement → fmp_balance_sheet → tiingo_fundamentals → eodhd_fundamentals (TICKER.US) → get_income_statements / get_balance_sheets / get_cash_flow_statements
+- Ratios + valuation metrics: fmp_ratios → finnhub_quote + finnhub_recommendation → get_key_ratios
+- Intrinsic value / DCF: fmp_dcf_valuation
+- Company profile + peers: fmp_company_profile → finnhub_company_profile → finnhub_peers
+- Earnings history: get_earnings (Financial Datasets beats/misses + analyst estimates)
+- Global (non-US) fundamentals: eodhd_fundamentals (TICKER.EXCHANGE notation)
+
+For non-US tickers, the EODHD format is REQUIRED (e.g., "VOD.LSE" for Vodafone on London, "RELIANCE.NSE" for Reliance India).`
+    : '';
+
   return `You are a financial data routing assistant.
 Current date: ${getCurrentDate()}
 
@@ -87,6 +109,7 @@ Given a user's natural language query about financial data, call the appropriate
 1. **Ticker Resolution**: Convert company names to ticker symbols:
    - Apple → AAPL, Tesla → TSLA, Microsoft → MSFT, Amazon → AMZN
    - Google/Alphabet → GOOGL, Meta/Facebook → META, Nvidia → NVDA
+   - For non-US tickers, use TICKER.EXCHANGE notation (VOD.LSE, 7203.TSE, RELIANCE.NSE, 0700.HK)
 
 2. **Date Inference**: Use schema-supported filters for date ranges:
    - "last year" → report_period_gte 1 year ago
@@ -94,17 +117,23 @@ Given a user's natural language query about financial data, call the appropriate
    - "past 5 years" → report_period_gte 5 years ago and limit 5 (annual) or 20 (quarterly)
    - "YTD" → report_period_gte Jan 1 of current year
 
-3. **Tool Selection**:
-   - For latest financial metrics snapshot (P/E, margins, ROE, EPS, growth rates) → get_financial_metrics_snapshot
-   - For historical P/E ratio, historical market cap, valuation metrics over time → get_key_ratios
+3. **Tool Selection (built-in Financial Datasets tools)**:
+   - For latest financial metrics snapshot (P/E, margins, ROE, EPS, growth rates) → get_key_ratios
+   - For historical P/E ratio, historical market cap, valuation metrics over time → get_historical_key_ratios
    - For revenue, earnings, profitability → get_income_statements
    - For latest earnings release snapshot, EPS/revenue beat-miss, earnings surprises, or latest earnings feed → get_earnings
    - For "latest earnings", "recent earnings", or "earnings feed" across the market, call get_earnings without a ticker
    - For debt, assets, equity → get_balance_sheets
    - For cash flow, free cash flow → get_cash_flow_statements
    - For comprehensive analysis → get_all_financial_statements
+   - For revenue/operating-income split by segment → get_financial_segments
 
-4. **Efficiency**:
+4. **Tool Selection (roadmap providers — see "Active Roadmap Providers" below)**:
+   - Prefer the roadmap provider in the preference order above per query type
+   - For DCF / intrinsic value: fmp_dcf_valuation
+   - For non-US tickers, always use eodhd_fundamentals with TICKER.EXCHANGE notation
+
+5. **Efficiency**:
    - Prefer specific tools over general ones when possible
    - Use get_all_financial_statements only when multiple statement types needed
    - For comparisons between companies, call the same tool for each ticker
@@ -113,6 +142,7 @@ Given a user's natural language query about financial data, call the appropriate
      - Short trend (2-3 periods) → limit 3
      - Medium trend (4-5 periods) → limit 5
    - Increase limit beyond defaults only when the user explicitly asks for long history (e.g., 10-year trend)
+   - Issue multiple tool calls in a SINGLE turn when sub-queries are independent (they run in parallel)${providerSection}
 
 Call the appropriate tool(s) now.`;
 }
@@ -185,26 +215,49 @@ export function createGetFinancials(model: string): DynamicStructuredTool {
         })
       );
 
-      // 4. Combine results
+      // 4. Combine results with numbered source citations.
       const successfulResults = results.filter((r) => r.error === null);
       const failedResults = results.filter((r) => r.error !== null);
 
-      // Collect all source URLs
-      const allUrls = results.flatMap((r) => r.sourceUrls);
+      // Numbered, deduped source references
+      const allSources: SourceRef[] = [];
+      const seenUrls = new Set<string>();
+      const citationsByResult = new Map<number, number[]>();
+      let nextCitation = 1;
+      successfulResults.forEach((r, i) => {
+        const ids: number[] = [];
+        for (const url of r.sourceUrls) {
+          if (typeof url !== 'string' || !url) continue;
+          const existing = allSources.find((s) => s.url === url);
+          if (existing) {
+            ids.push(existing.id);
+            continue;
+          }
+          if (seenUrls.has(url)) continue;
+          seenUrls.add(url);
+          const id = nextCitation++;
+          allSources.push({ id, url, provider: r.tool });
+          ids.push(id);
+        }
+        citationsByResult.set(i, ids);
+      });
 
       // Build combined data structure
       const combinedData: Record<string, unknown> = {};
-
-      for (const result of successfulResults) {
+      successfulResults.forEach((result, i) => {
         const ticker = (result.args as Record<string, unknown>).ticker as string | undefined;
         const key = ticker ? `${result.tool}_${ticker}` : result.tool;
         const formatter = FINANCIAL_FORMATTERS[result.tool];
-        combinedData[key] = formatter
+        const formatted = formatter
           ? formatter(result.data, result.args as Record<string, unknown>)
           : result.data;
-      }
+        combinedData[key] = {
+          data: formatted,
+          citations: citationsByResult.get(i) ?? [],
+          provider: result.tool,
+        };
+      });
 
-      // Add errors if any
       if (failedResults.length > 0) {
         combinedData._errors = failedResults.map((r) => ({
           tool: r.tool,
@@ -213,7 +266,14 @@ export function createGetFinancials(model: string): DynamicStructuredTool {
         }));
       }
 
-      return formatToolResult(combinedData, allUrls);
+      const allUrls = allSources.map((s) => s.url);
+      return JSON.stringify({
+        data: combinedData,
+        sourceUrls: allUrls,
+        sources: allSources,
+        provider: 'get_financials router',
+        asOf: new Date().toISOString(),
+      });
     },
   });
 }

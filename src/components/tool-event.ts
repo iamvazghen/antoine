@@ -2,8 +2,9 @@ import { Container, Spacer, Text, type TUI } from '@mariozechner/pi-tui';
 import type { ApprovalDecision } from '../agent/types.js';
 import { theme } from '../theme.js';
 import { subscribeSpinner, SPINNER_INTERVAL_MS } from '../utils/spinner.js';
+import { getToolIcon } from '../utils/tool-icons.js';
 
-const CIRCLE = '⏺';
+const CIRCLE = '⏺'; // ponytail: legacy fallback glyph if registry misses
 
 /** Short display names that override the default title-casing. */
 const TOOL_NAME_OVERRIDES: Record<string, string> = {
@@ -77,6 +78,9 @@ function approvalLabel(decision: ApprovalDecision): string {
 export class ToolEventComponent extends Container {
   private readonly header: Text;
   private readonly toolTitle: string;
+  private readonly toolName: string;
+  private readonly accent: (text: string) => string;
+  private readonly glyph: string;
   private completedDetails: Text[] = [];
   private activeDetail: Text | null = null;
   private unsubscribeSpinner: (() => void) | null = null;
@@ -86,25 +90,29 @@ export class ToolEventComponent extends Container {
   constructor(_tui: TUI, tool: string, args: Record<string, unknown>) {
     super();
     this.addChild(new Spacer(1));
+    this.toolName = tool;
+    const icon = getToolIcon(tool);
+    this.glyph = icon.glyph;
+    this.accent = theme[icon.accent] as (text: string) => string;
     this.toolTitle = `${formatToolName(tool)}${args ? `${theme.muted('(')}${formatArgs(tool, args)}${theme.muted(')')}` : ''}`;
-    this.header = new Text(`${theme.success(CIRCLE)} ${this.toolTitle}`, 0, 0);
+    this.header = new Text(`${theme.success(this.glyph)} ${this.toolTitle}`, 0, 0);
     this.addChild(this.header);
   }
 
   setActive(progressMessage?: string) {
     this.clearDetail();
-    // Pulsing circle: blink the header circle using the shared spinner clock
+    // Pulsing glyph: blink the header glyph using the shared spinner clock
     this.blinkCounter = 0;
     this.blinkVisible = true;
-    this.header.setText(`${theme.success(CIRCLE)} ${this.toolTitle}`);
+    this.header.setText(`${this.accent(this.glyph)} ${this.toolTitle}`);
     // Toggle visibility every ~600ms regardless of the spinner tick rate.
     const ticksPerHalfPeriod = Math.max(1, Math.round(600 / SPINNER_INTERVAL_MS));
     this.unsubscribeSpinner = subscribeSpinner(() => {
       this.blinkCounter++;
       if (this.blinkCounter % ticksPerHalfPeriod === 0) {
         this.blinkVisible = !this.blinkVisible;
-        const circle = this.blinkVisible ? theme.success(CIRCLE) : ' ';
-        this.header.setText(`${circle} ${this.toolTitle}`);
+        const glyph = this.blinkVisible ? this.accent(this.glyph) : ' ';
+        this.header.setText(`${glyph} ${this.toolTitle}`);
       }
     });
     if (progressMessage) {
@@ -115,7 +123,7 @@ export class ToolEventComponent extends Container {
 
   setComplete(summary: string, duration: number) {
     this.clearDetail();
-    this.header.setText(`${theme.primary(CIRCLE)} ${this.toolTitle}`);
+    this.header.setText(`${this.accent(this.glyph)} ${this.toolTitle}`);
     const detail = new Text(
       `${theme.muted('⎿  ')}${summary}${theme.muted(` in ${formatDuration(duration)}`)}`,
       0,
@@ -127,8 +135,8 @@ export class ToolEventComponent extends Container {
 
   setError(error: string) {
     this.clearDetail();
-    // Solid red circle
-    this.header.setText(`${theme.error(CIRCLE)} ${this.toolTitle}`);
+    // Solid red glyph
+    this.header.setText(`${theme.error(this.glyph)} ${this.toolTitle}`);
     const detail = new Text(`${theme.muted('⎿  ')}${theme.error(`Error: ${truncateAtWord(error, 80)}`)}`, 0, 0);
     this.completedDetails.push(detail);
     this.addChild(detail);
@@ -146,7 +154,7 @@ export class ToolEventComponent extends Container {
 
   setDenied(path: string, tool: string) {
     this.clearDetail();
-    this.header.setText(`${theme.error(CIRCLE)} ${this.toolTitle}`);
+    this.header.setText(`${theme.error(this.glyph)} ${this.toolTitle}`);
     const action = tool === 'write_file' ? 'write to' : tool === 'edit_file' ? 'edit of' : tool;
     const detail = new Text(`${theme.muted('⎿  ')}${theme.warning(`User denied ${action} ${path}`)}`, 0, 0);
     this.completedDetails.push(detail);
@@ -156,8 +164,8 @@ export class ToolEventComponent extends Container {
   setApproval(decision: ApprovalDecision) {
     this.clearDetail();
     const color = decision !== 'deny' ? theme.primary : theme.warning;
-    const circle = decision !== 'deny' ? theme.success(CIRCLE) : theme.error(CIRCLE);
-    this.header.setText(`${circle} ${this.toolTitle}`);
+    const glyph = decision !== 'deny' ? theme.success(this.glyph) : theme.error(this.glyph);
+    this.header.setText(`${glyph} ${this.toolTitle}`);
     const detail = new Text(`${theme.muted('⎿  ')}${color(approvalLabel(decision))}`, 0, 0);
     this.completedDetails.push(detail);
     this.addChild(detail);

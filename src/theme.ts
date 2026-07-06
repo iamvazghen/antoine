@@ -18,7 +18,20 @@ interface Palette {
   border: string;
 }
 
-export type ThemeName = 'emerald' | 'sapphire' | 'amethyst';
+/** Public type — names keys used by tool icons and other theme-aware code. */
+export type ThemePaletteKey =
+  | 'primary'
+  | 'primaryLight'
+  | 'success'
+  | 'error'
+  | 'warning'
+  | 'muted'
+  | 'mutedDark'
+  | 'accent'
+  | 'info'
+  | 'border';
+
+export type ThemeName = 'emerald' | 'sapphire' | 'amethyst' | 'obsidian';
 
 const PALETTES: Record<ThemeName, Palette> = {
   // Default "finance terminal" — emerald primary with a warm gold accent.
@@ -66,6 +79,21 @@ const PALETTES: Record<ThemeName, Palette> = {
     queryBg: '#2a1e3a',
     border: '#3a2b4d',
   },
+  // Deep obsidian — black-blue with magenta accent. For late-night trading.
+  obsidian: {
+    primary: '#7dd3fc',
+    primaryLight: '#bae6fd',
+    success: '#34d399',
+    error: '#fb7185',
+    warning: '#fbbf24',
+    muted: '#94a3b8',
+    mutedDark: '#1e293b',
+    accent: '#f472b6',
+    white: '#f8fafc',
+    info: '#38bdf8',
+    queryBg: '#0b1120',
+    border: '#1e293b',
+  },
 };
 
 /** Ordered list for cycling + display. */
@@ -73,6 +101,7 @@ export const THEMES: { name: ThemeName; label: string }[] = [
   { name: 'emerald', label: 'Emerald — emerald + gold (default)' },
   { name: 'sapphire', label: 'Sapphire — blue + cyan' },
   { name: 'amethyst', label: 'Amethyst — purple + magenta' },
+  { name: 'obsidian', label: 'Obsidian — black + sky + magenta' },
 ];
 
 const DEFAULT_THEME: ThemeName = 'emerald';

@@ -1,5 +1,20 @@
 import { StructuredToolInterface } from '@langchain/core/tools';
-import { createGetFinancials, createGetMarketData, createReadFilings, createScreenStocks, getFxRates, FX_RATES_DESCRIPTION, getEconomicIndicators, ECONOMIC_INDICATORS_DESCRIPTION } from './finance/index.js';
+import {
+  createGetFinancials,
+  createGetMarketData,
+  createReadFilings,
+  createScreenStocks,
+  getFxRates,
+  FX_RATES_DESCRIPTION,
+  getEconomicIndicators,
+  ECONOMIC_INDICATORS_DESCRIPTION,
+  getCatalystCalendar,
+  GET_CATALYST_CALENDAR_DESCRIPTION,
+  getGlobalStock,
+  GET_GLOBAL_STOCK_DESCRIPTION,
+  getCommodity,
+  GET_COMMODITY_DESCRIPTION,
+} from './finance/index.js';
 import { exaSearch, perplexitySearch, tavilySearch, langSearch, WEB_SEARCH_DESCRIPTION, xSearchTool, X_SEARCH_DESCRIPTION } from './search/index.js';
 import { createWebSearchTool, type WebSearchProvider } from './search/web-search.js';
 import { getSetting } from '../utils/config.js';
@@ -19,7 +34,11 @@ import { cronTool, CRON_TOOL_DESCRIPTION } from './cron/cron-tool.js';
 import { memoryGetTool, MEMORY_GET_DESCRIPTION, memorySearchTool, MEMORY_SEARCH_DESCRIPTION, memoryUpdateTool, MEMORY_UPDATE_DESCRIPTION } from './memory/index.js';
 import { discoverSkills } from '../skills/index.js';
 import { createSpawnSubagent, SPAWN_SUBAGENT_DESCRIPTION } from './subagent/spawn-subagent.js';
+import { createRunDebate, RUN_DEBATE_DESCRIPTION } from './subagent/run-debate.js';
 import { createAskUserQuestion, ASK_USER_QUESTION_DESCRIPTION } from './ask-user-question/ask-user-question.js';
+import { getAllProviderLeaves } from './finance/providers/index.js';
+import { getAllNewsLeaves, getNewsRouterTool } from './news/index.js';
+import { portfolioView, portfolioAdd, portfolioRemove, portfolioJournal, portfolioSetRisk } from './portfolio/index.js';
 
 /**
  * A registered tool with its rich description for system prompt injection.
@@ -94,6 +113,13 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       description: SPAWN_SUBAGENT_DESCRIPTION,
       compactDescription: 'Delegate a focused sub-task to an isolated subagent. Emit multiple calls in one turn to run independent sub-tasks in parallel.',
       concurrencySafe: true,
+    },
+    {
+      name: 'run_debate',
+      tool: createRunDebate(model),
+      description: RUN_DEBATE_DESCRIPTION,
+      compactDescription: 'Run a 4-specialist investment debate + judge synthesis (high cost, high conviction trades only).',
+      concurrencySafe: false,
     },
     {
       name: 'ask_user_question',
@@ -228,6 +254,113 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       concurrencySafe: false,
     });
   }
+
+  // Roadmap data providers — only registered when the matching env key is set.
+  // Ponytail: leaf tools, no extra meta-tool wrapper. Each provider's
+  // `getLeaves()` already returned null for missing keys.
+  for (const leaf of getAllProviderLeaves()) {
+    tools.push({
+      name: leaf.name,
+      tool: leaf,
+      description: leaf.description,
+      compactDescription: leaf.description.split('.')[0],
+      concurrencySafe: true,
+    });
+  }
+
+  for (const leaf of getAllNewsLeaves()) {
+    tools.push({
+      name: leaf.name,
+      tool: leaf,
+      description: leaf.description,
+      compactDescription: leaf.description.split('.')[0],
+      concurrencySafe: true,
+    });
+  }
+
+  // News router — agent should prefer this over picking individual news tools.
+  const newsRouter = getNewsRouterTool();
+  if (newsRouter) {
+    tools.push({
+      name: 'get_news',
+      tool: newsRouter,
+      description: newsRouter.description,
+      compactDescription: 'Meta-tool that picks the best news source for the query (Marketaux/Benzinga/NewsAPI).',
+      concurrencySafe: true,
+    });
+  }
+
+  // Catalyst calendar — only when at least one earnings source is configured.
+  if (process.env.FMP_API_KEY || process.env.FINNHUB_API_KEY) {
+    tools.push({
+      name: 'get_catalyst_calendar',
+      tool: getCatalystCalendar,
+      description: GET_CATALYST_CALENDAR_DESCRIPTION,
+      compactDescription: 'Upcoming earnings + catalyst calendar (FMP > Finnhub fallback). Use this whenever you cite a price target.',
+      concurrencySafe: true,
+    });
+  }
+
+  // Global stock — non-US tickers via EODHD (TICKER.EXCHANGE notation).
+  if (process.env.EODHD_API_KEY) {
+    tools.push({
+      name: 'get_global_stock',
+      tool: getGlobalStock,
+      description: GET_GLOBAL_STOCK_DESCRIPTION,
+      compactDescription: 'Region-aware global stock quote for non-US tickers (EODHD, normalizes TICKER.EXCHANGE notation + local currency).',
+      concurrencySafe: true,
+    });
+  }
+
+  // Commodities — Alpha Vantage preferred, FRED fallback for select series.
+  if (process.env.ALPHA_VANTAGE_API_KEY || process.env.FRED_API_KEY) {
+    tools.push({
+      name: 'get_commodity',
+      tool: getCommodity,
+      description: GET_COMMODITY_DESCRIPTION,
+      compactDescription: 'Latest commodity price (WTI, BRENT, NatGas, copper, wheat, corn, sugar, coffee, etc.) from Alpha Vantage with FRED fallback.',
+      concurrencySafe: true,
+    });
+  }
+
+  // Portfolio tools — always available (no env key required; persists locally).
+  tools.push(
+    {
+      name: 'portfolio_view',
+      tool: portfolioView,
+      description: 'View the user portfolio: open positions, recent closes, journal entries, risk profile. ALWAYS call before personalized advice.',
+      compactDescription: 'Read user portfolio (positions, closed history, journal, risk profile).',
+      concurrencySafe: true,
+    },
+    {
+      name: 'portfolio_add',
+      tool: portfolioAdd,
+      description: 'Add a new open position. Confirm with the user before calling.',
+      compactDescription: 'Add an open position to the portfolio.',
+      concurrencySafe: false,
+    },
+    {
+      name: 'portfolio_remove',
+      tool: portfolioRemove,
+      description: 'Close an existing open position. Records exit price + realized P&L + lesson.',
+      compactDescription: 'Close an open position; record realized P&L.',
+      concurrencySafe: false,
+    },
+    {
+      name: 'portfolio_journal',
+      tool: portfolioJournal,
+      description: 'Append a free-form note to the portfolio journal (observations, trade ideas, lessons).',
+      compactDescription: 'Append a portfolio journal entry.',
+      concurrencySafe: false,
+    },
+    {
+      name: 'portfolio_set_risk',
+      tool: portfolioSetRisk,
+      description: 'Set the user risk profile (total capital USD, max % per trade, max drawdown).',
+      compactDescription: 'Set the user risk profile (capital, risk budget, max drawdown).',
+      concurrencySafe: false,
+    },
+  );
 
   return tools;
 }

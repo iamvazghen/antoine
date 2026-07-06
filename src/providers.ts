@@ -12,6 +12,10 @@ export interface ProviderDef {
   modelPrefix: string;
   /** Environment variable name for API key. Omit for local providers (e.g., Ollama). */
   apiKeyEnvVar?: string;
+  /** Environment variable name for an OpenAI-compatible base URL. Optional. */
+  baseUrlEnvVar?: string;
+  /** Fallback base URL when baseUrlEnvVar is unset. */
+  baseUrlDefault?: string;
   /** Fast model variant for lightweight tasks like summarization. */
   fastModel?: string;
   /** Default context window size in tokens. Used for model-aware compaction thresholds. */
@@ -88,6 +92,16 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'Ollama',
     modelPrefix: 'ollama:',
     contextWindow: 128_000,
+  },
+  {
+    id: 'minimax',
+    displayName: 'minimax',
+    modelPrefix: 'minimax:',
+    apiKeyEnvVar: 'MINIMAX_API_KEY',
+    baseUrlEnvVar: 'MINIMAX_BASE_URL',
+    baseUrlDefault: 'https://api.minimax.io/v1',
+    fastModel: 'minimax:MiniMax-M2.5-highspeed',
+    contextWindow: 200_000,
   },
 ];
 
