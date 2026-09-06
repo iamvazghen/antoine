@@ -110,7 +110,7 @@ export async function executeCronJob(
 
   debugLog(`[cron] executing job "${job.name}" (${job.id})`);
 
-  // 1. Find WhatsApp delivery target
+  // 1. Find the delivery target
   const session = findTargetSession();
   if (!session?.lastTo || !session?.lastAccountId) {
     debugLog(`[cron] job ${job.id}: no delivery target, skipping`);
@@ -118,11 +118,12 @@ export async function executeCronJob(
     return;
   }
 
-  // 2. Verify outbound allowed
+  // 2. Verify outbound allowed, on the session's own channel
   try {
-    assertOutboundAllowed({ to: session.lastTo, accountId: session.lastAccountId });
-  } catch {
-    debugLog(`[cron] job ${job.id}: outbound blocked, skipping`);
+    assertCronOutboundAllowed(session);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    debugLog(`[cron] job ${job.id}: outbound blocked (${why}), skipping`);
     scheduleNextRun(job, store);
     return;
   }
@@ -192,6 +193,33 @@ export async function executeCronJob(
   }
 
   scheduleNextRun(job, store);
+}
+
+/**
+ * Channel-aware outbound guard for scheduled jobs.
+ *
+ * This used to call the WhatsApp guard unconditionally, which parses the
+ * recipient as a WhatsApp JID and checks it against the WhatsApp allowlist. A
+ * Telegram chat id can never satisfy that, so every scheduled job destined for
+ * Telegram was dropped with `outbound blocked, skipping` - the review ran, the
+ * agent produced an answer, and nothing was ever delivered.
+ */
+function assertCronOutboundAllowed(session: SessionEntry): void {
+  const to = session.lastTo;
+  if (!to) throw new Error('no recipient on session');
+
+  if ((session.lastChannel ?? 'whatsapp') === 'telegram') {
+    const account = resolveTelegramAccount(loadGatewayConfig(), session.lastAccountId ?? 'default');
+    const allowFrom = account.allowFrom ?? [];
+    // An empty allowlist means the channel was never restricted; a populated
+    // one must contain this recipient.
+    if (allowFrom.length > 0 && !allowFrom.includes(String(to))) {
+      throw new Error(`telegram recipient ${to} is not in allowFrom`);
+    }
+    return;
+  }
+
+  assertOutboundAllowed({ to, accountId: session.lastAccountId });
 }
 
 /**
