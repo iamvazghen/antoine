@@ -4,6 +4,7 @@ import { callLlmWithMessages, streamLlmWithMessages } from '../model/llm.js';
 import { getTools, getToolConcurrencyMap } from '../tools/registry.js';
 import { buildSystemPrompt, loadSoulDocument, loadRulesDocument } from './prompts.js';
 import { extractTextContent, hasToolCalls } from '../utils/ai-message.js';
+import { stripReasoning } from '../utils/strip-reasoning.js';
 import { InMemoryChatHistory } from '../utils/in-memory-chat-history.js';
 import { estimateTokens, getAutoCompactThreshold, KEEP_TOOL_USES } from '../utils/tokens.js';
 import { exceedsSizeCap, persistLargeResult, buildPersistedContent } from '../utils/tool-result-storage.js';
@@ -213,7 +214,7 @@ export class Agent {
 
       // No tool calls = final answer
       if (!hasToolCalls(response)) {
-        yield* this.handleDirectResponse(responseText ?? '', ctx);
+        yield* this.handleDirectResponse(stripReasoning(responseText ?? ''), ctx);
         return;
       }
 
@@ -293,7 +294,7 @@ export class Agent {
         signal: this.signal,
       });
       ctx.tokenCounter.add(usage);
-      synthesizedAnswer = (extractTextContent(response as AIMessage) ?? '').trim();
+      synthesizedAnswer = stripReasoning(extractTextContent(response as AIMessage) ?? '');
     } catch {
       // Fall through to the generic message below.
     }
