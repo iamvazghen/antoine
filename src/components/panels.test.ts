@@ -118,3 +118,47 @@ describe('startup noise', () => {
     expect(text).toContain('providers active');
   });
 });
+
+describe('responsive layout', () => {
+  test('the block banner is dropped when the terminal is too narrow for it', () => {
+    // 58 columns of block letters wrap into rubble on a narrow window.
+    const wide = renderedText(new IntroComponent('gpt-4o', 'OpenAI', 3));
+    expect(wide).toContain('█');
+
+    const narrow = new IntroComponent('gpt-4o', 'OpenAI', 3);
+    const narrowText = narrow.render(50).join('\n');
+    expect(narrowText).not.toContain('█');
+    expect(narrowText).toContain('ANTOINE');
+  });
+
+  test('a very narrow terminal drops the wordmark too but keeps the facts', () => {
+    const tiny = new IntroComponent('minimax:MiniMax-M2.5', 'MiniMax', 3).render(28).join('\n');
+    expect(tiny).not.toContain('█');
+    expect(tiny).toContain('thinking');
+  });
+
+  test('help stacks the description under the command on a narrow terminal', () => {
+    const panel = new HelpPanelComponent();
+    const narrow = panel.render(50).join('\n');
+    // Command and description end up on separate lines rather than truncated.
+    const lines = narrow.split('\n');
+    const idx = lines.findIndex((l) => l.includes('/grade AAPL'));
+    expect(idx).toBeGreaterThan(-1);
+    expect(lines[idx + 1]).toContain('Score a ticker');
+  });
+
+  test('help returns to one line per command when there is room', () => {
+    const panel = new HelpPanelComponent();
+    const wide = panel.render(120).join('\n');
+    const line = wide.split('\n').find((l) => l.includes('/grade AAPL'));
+    expect(line).toContain('Score a ticker');
+  });
+
+  test('widening the terminal restores the full banner', () => {
+    // The bug this guards: layout is decided at build time, so without a
+    // rebuild the banner stays collapsed after the window grows.
+    const intro = new IntroComponent('gpt-4o', 'OpenAI', 3);
+    expect(intro.render(50).join('\n')).not.toContain('█');
+    expect(intro.render(120).join('\n')).toContain('█');
+  });
+});

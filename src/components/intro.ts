@@ -11,6 +11,13 @@ const BANNER = `
 ██║  ██║██║ ╚████║   ██║   ╚██████╔╝██║██║ ╚████║███████╗
 ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝`;
 
+/** The block banner needs this many columns before it stops wrapping. */
+const BANNER_MIN_WIDTH = 62;
+/** Below this, even the compact wordmark is dropped. */
+const WORDMARK_MIN_WIDTH = 34;
+
+const WORDMARK = '  ANTOINE';
+
 /** Label column width for the session facts block. */
 const LABEL_COL = 9;
 
@@ -23,6 +30,7 @@ const LABEL_COL = 9;
 export class IntroComponent extends Container {
   private model: string;
   private providerCount = 0;
+  private builtWidth = -1;
 
   constructor(model: string, _providerName?: string, providerCount = 0) {
     super();
@@ -45,21 +53,40 @@ export class IntroComponent extends Container {
     this.build();
   }
 
+  /**
+   * Rebuild when the terminal width changes. Layout is decided at build time,
+   * so a resize has to re-run it — otherwise the banner stays wrapped after
+   * the window is widened.
+   */
+  render(width: number): string[] {
+    if (width !== this.builtWidth) {
+      this.builtWidth = width;
+      this.build(width);
+    }
+    return super.render(width);
+  }
+
   private row(label: string, value: string) {
     this.addChild(new Text(`  ${theme.muted(label.padEnd(LABEL_COL))}${value}`, 0, 0));
   }
 
-  private build() {
+  private build(width = BANNER_MIN_WIDTH) {
     this.clear();
 
     this.addChild(new Spacer(1));
     // Indent to the same gutter as the text below; the banner used to start
     // hard against column 0 while every other line was inset by two.
-    const banner = BANNER.split('\n')
-      .map((line) => (line ? `  ${line}` : line))
-      .join('\n');
-    this.addChild(new Text(theme.bold(theme.primary(banner)), 0, 0));
-    this.addChild(new Spacer(1));
+    if (width >= BANNER_MIN_WIDTH) {
+      const banner = BANNER.split('\n')
+        .map((line) => (line ? `  ${line}` : line))
+        .join('\n');
+      this.addChild(new Text(theme.bold(theme.primary(banner)), 0, 0));
+      this.addChild(new Spacer(1));
+    } else if (width >= WORDMARK_MIN_WIDTH) {
+      // Too narrow for block letters, wide enough for a wordmark.
+      this.addChild(new Text(theme.bold(theme.primary(WORDMARK)), 0, 0));
+      this.addChild(new Spacer(1));
+    }
 
     this.addChild(
       new Text(

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { fetchJson } from './utils.js';
 import { formatToolResult, type SourceRef } from '../types.js';
 import { parseTicker, getRegion, formatMarketCap } from './region-helpers.js';
+import { yahooQuote, toYahooSymbol, isYahooSupported } from './providers/yahoo.js';
 
 const LABEL = 'Global Stock (EODHD)';
 
@@ -53,12 +54,6 @@ export const getGlobalStock = new DynamicStructuredTool({
   schema: GetGlobalStockInputSchema,
   func: async (input) => {
     const apiKey = process.env.EODHD_API_KEY;
-    if (!apiKey) {
-      return formatToolResult(
-        { error: 'EODHD_API_KEY is not set. Set it in .env to enable global stock coverage.' },
-        [],
-      );
-    }
 
     const { symbol, exchange } = parseTicker(input.ticker);
     if (!exchange) {
@@ -73,6 +68,47 @@ export const getGlobalStock = new DynamicStructuredTool({
       return formatToolResult(
         {
           error: `Unknown exchange suffix "${exchange}". Supported: LSE, PA, AS, DE, SW, TSE, HK, SHG, SHE, NSE, BSE, AX, TO, KS, SI, etc.`,
+        },
+        [],
+      );
+    }
+
+    // Yahoo first: it is free, unthrottled, and covers markets EODHD does not
+    // sell on this plan. EODHD stays as the fallback because Yahoo is an
+    // undocumented endpoint and could change without notice.
+    if (isYahooSupported(region.exchange)) {
+      try {
+        const yahooRaw = await yahooQuote.invoke({ ticker: input.ticker });
+        const parsed = JSON.parse(String(yahooRaw)) as {
+          data?: { price?: number | null };
+          sourceUrls?: string[];
+        };
+        if (parsed.data?.price != null) {
+          return formatToolResult(
+            {
+              ...parsed.data,
+              region: region.name,
+              country: region.country,
+              trading_hours_utc:
+                region.openUtc && region.closeUtc
+                  ? `${region.openUtc}-${region.closeUtc}`
+                  : 'not recorded',
+              provider: 'yahoo',
+            },
+            parsed.sourceUrls ?? [],
+          );
+        }
+      } catch {
+        // Fall through to EODHD.
+      }
+    }
+
+    if (!apiKey) {
+      return formatToolResult(
+        {
+          error:
+            `No quote available for ${input.ticker}. Yahoo returned nothing and EODHD_API_KEY is not set. ` +
+            `Yahoo notation for this listing would be ${toYahooSymbol(input.ticker)}.`,
         },
         [],
       );

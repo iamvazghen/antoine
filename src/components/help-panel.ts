@@ -17,14 +17,18 @@ import {
   type SlashCommand,
 } from '../commands/index.js';
 
-/** Left column width. Wide enough for the longest command plus its usage hint. */
+/** Left column width on a comfortable terminal. */
 const NAME_COL = 22;
+/** Below this the description moves onto its own line instead of being truncated. */
+const STACK_BELOW = 64;
 
 function nameCell(cmd: SlashCommand): string {
   return cmd.usage ?? `/${cmd.name}`;
 }
 
 export class HelpPanelComponent extends Container {
+  private builtWidth = -1;
+
   constructor() {
     super();
     this.build();
@@ -35,7 +39,16 @@ export class HelpPanelComponent extends Container {
     this.build();
   }
 
-  private build() {
+  /** Rebuild on resize so the layout follows the window. */
+  render(width: number): string[] {
+    if (width !== this.builtWidth) {
+      this.builtWidth = width;
+      this.build(width);
+    }
+    return super.render(width);
+  }
+
+  private build(width = 100) {
     this.clear();
 
     this.addChild(new Spacer(1));
@@ -49,6 +62,12 @@ export class HelpPanelComponent extends Container {
       this.addChild(new Text(`  ${theme.accent(category)}`, 0, 0));
 
       for (const cmd of commands) {
+        if (width < STACK_BELOW) {
+          // Two short lines beat one truncated line on a narrow terminal.
+          this.addChild(new Text(`    ${theme.primaryLight(nameCell(cmd))}`, 0, 0));
+          this.addChild(new Text(`      ${theme.muted(cmd.description)}`, 0, 0));
+          continue;
+        }
         const name = nameCell(cmd).padEnd(NAME_COL);
         this.addChild(
           new Text(`    ${theme.primaryLight(name)}${theme.muted(cmd.description)}`, 0, 0),

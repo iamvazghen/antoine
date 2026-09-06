@@ -42,10 +42,20 @@ describe('region-helpers', () => {
     expect(sa?.currency).toBe('BRL');
   });
 
-  // These four were in the table but return "Ticker Not Found" from the provider.
-  test('exchange codes that the provider does not accept are absent', () => {
-    for (const dead of ['AX', 'KS', 'DE', 'NSE', 'BSE', 'TSE', 'SI']) {
+  // These were in the table but EODHD rejects them outright.
+  test('exchange codes no provider accepts are absent', () => {
+    for (const dead of ['AX', 'KS', 'DE']) {
       expect(getRegion(dead)).toBeNull();
+    }
+  });
+
+  // Japan, India, Singapore, Israel and Saudi were unreachable until Yahoo was
+  // wired in; they are now first-class.
+  test('the Yahoo-only markets are present', () => {
+    for (const [code, country] of [
+      ['TSE', 'JP'], ['NSE', 'IN'], ['BSE', 'IN'], ['SI', 'SG'], ['TA', 'IL'], ['SR', 'SA'],
+    ] as Array<[string, string]>) {
+      expect(getRegion(code)?.country).toBe(country);
     }
   });
 

@@ -39,6 +39,14 @@ export interface RegionMeta {
 // and rand. EODHD's own metadata says GBP/ZAR, which would overstate every
 // price by 100x if taken at face value.
 const REGIONS: Record<string, RegionMeta> = {
+  // Reachable only through Yahoo Finance - no configured paid provider sells
+  // these. Added once a free path to them existed.
+  TSE: { exchange: 'TSE', country: 'JP', currency: 'JPY', name: 'Tokyo', openUtc: '00:00', closeUtc: '06:00', unitScale: 1 },
+  NSE: { exchange: 'NSE', country: 'IN', currency: 'INR', name: 'NSE India', openUtc: '03:45', closeUtc: '10:00', unitScale: 1 },
+  BSE: { exchange: 'BSE', country: 'IN', currency: 'INR', name: 'BSE India', openUtc: '03:45', closeUtc: '10:00', unitScale: 1 },
+  SI: { exchange: 'SI', country: 'SG', currency: 'SGD', name: 'SGX Singapore', openUtc: '01:00', closeUtc: '09:00', unitScale: 1 },
+  TA: { exchange: 'TA', country: 'IL', currency: 'ILA', name: 'Tel Aviv', unitScale: 1 },
+  SR: { exchange: 'SR', country: 'SA', currency: 'SAR', name: 'Tadawul (Riyadh)', unitScale: 1 },
   AS: { exchange: 'AS', country: 'NL', currency: 'EUR', name: 'Euronext Amsterdam', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
   AT: { exchange: 'AT', country: 'GR', currency: 'EUR', name: 'Athens Exchange', openUtc: '07:00', closeUtc: '15:20', unitScale: 1 },
   AU: { exchange: 'AU', country: 'AU', currency: 'AUD', name: 'Australian Securities Exchange', openUtc: '00:00', closeUtc: '06:00', unitScale: 1 },
