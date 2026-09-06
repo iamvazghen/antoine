@@ -307,6 +307,19 @@ async function handleTelegramInbound(
   }
 }
 
+function logChannelStatus(
+  channel: string,
+  accountId: string,
+  snap: { running: boolean; connected?: boolean; lastError?: string | null },
+): void {
+  const state = !snap.running
+    ? `NOT RUNNING${snap.lastError ? ` (${snap.lastError})` : ''}`
+    : snap.connected === false
+      ? 'started, not yet connected'
+      : 'connected';
+  console.log(`[gateway] ${channel}:${accountId} ${state}`);
+}
+
 export async function startGateway(params: { configPath?: string } = {}): Promise<GatewayService> {
   const cfg = loadGatewayConfig(params.configPath);
   const plugin = createWhatsAppPlugin({
@@ -335,6 +348,16 @@ export async function startGateway(params: { configPath?: string } = {}): Promis
 
   await manager.startAll();
   await telegramManager.startAll();
+
+  // Report what actually came up. startAccount() swallows a channel failure
+  // into an unprinted lastError, so a gateway with a dead Telegram channel
+  // logged exactly the same line as a healthy one.
+  for (const [id, snap] of Object.entries(manager.getSnapshot())) {
+    logChannelStatus('whatsapp', id, snap);
+  }
+  for (const [id, snap] of Object.entries(telegramManager.getSnapshot())) {
+    logChannelStatus('telegram', id, snap);
+  }
 
   ensureHeartbeatCronJob(params.configPath);
   const cron = startCronRunner({ configPath: params.configPath });
