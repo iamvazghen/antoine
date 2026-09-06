@@ -8,6 +8,9 @@ import { z } from 'zod';
 import { callProvider, TTL_EOD_PRICES, TTL_FUNDAMENTALS } from '../provider-call.js';
 import { formatToolResult, type SourceRef } from '../../types.js';
 
+// The free plan allows 20 API calls a day across every EODHD tool combined,
+// which a single report can exhaust. yahoo_history covers the same global
+// price data without a quota — reach for EODHD only when it does not.
 const LABEL = 'EODHD';
 const BASE_URL = 'https://eodhd.com/api';
 
@@ -35,7 +38,7 @@ async function callEodhd(path: string, params: Record<string, string>, ttlMs: nu
 
 const eod = new DynamicStructuredTool({
   name: 'eodhd_eod_prices',
-  description: 'End-of-day OHLCV for any global exchange ticker from EODHD (format: TICKER.EXCHANGE).',
+  description: 'Free tier allows 20 calls a day in total; prefer yahoo_history unless EODHD is needed. End-of-day OHLCV for any global exchange ticker from EODHD (format: TICKER.EXCHANGE).',
   schema: z.object({
     ticker: z.string().describe('Format: TICKER.EXCHANGE, e.g. AAPL.US or VOD.LSE'),
     start_date: z.string().describe('YYYY-MM-DD'),

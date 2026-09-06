@@ -36,6 +36,7 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
 
   // --- macro
   get_fred_series: { series: 'fed_funds' },
+  fred_search: { query: '30 year mortgage rate', limit: 3 },
   get_fred_series_multi: { series: ['fed_funds', 'treasury_10y'] },
   get_fx_rates: { base: 'EUR', symbols: ['USD'] },
   get_economic_indicators: { country: 'DE', indicator: 'gdp' },
@@ -84,6 +85,9 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
   polygon_forex_snapshot: { pair: 'EUR/USD' },
   finnhub_sentiment: { ticker: 'AAPL' },
   finnhub_earnings_calendar: { from: '2026-09-01', to: '2026-09-30', symbol: 'AAPL' },
+  finnhub_insider_transactions: { ticker: 'AAPL' },
+  finnhub_insider_sentiment: { ticker: 'AAPL' },
+  finnhub_symbol_search: { query: 'Rheinmetall' },
   fmp_earnings_calendar: { from: '2026-09-01', to: '2026-09-15' },
   fmp_earnings_surprises: { ticker: 'AAPL' },
   twelvedata_time_series: { symbol: 'AAPL', interval: '1day', outputsize: 5 },
@@ -116,6 +120,7 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
   get_news: { query: 'Apple' },
   newsapi_everything: { query: 'apple', days_back: 3, page_size: 2, language: 'en' },
   benzinga_news: { tickers: 'AAPL', days_back: 3, limit: 2 },
+  benzinga_analyst_ratings: { tickers: 'AAPL', days_back: 120, limit: 3 },
   marketaux_news: { symbols: 'AAPL', days_back: 3, limit: 2 },
   web_search: { query: 'Apple earnings' },
 };
@@ -142,6 +147,10 @@ const SUBSTITUTES: Record<string, string> = {
   rentcast_rent_estimate: 'no free equivalent — real-estate data is peripheral to equity research',
   rentcast_value_estimate: 'no free equivalent',
   realtor_properties_for_sale: 'no free equivalent',
+  x_search: 'web_search — X\'s free tier sells no search quota, so this returns 402 credits depleted',
+  get_insider_trades: 'finnhub_insider_transactions (same SEC Form 4 data, free tier)',
+  get_available_stock_tickers: 'finnhub_symbol_search',
+  get_available_crypto_tickers: 'coingecko_markets',
 };
 /**
  * Tools deliberately outside the sweep, with the reason. Without this an
@@ -171,7 +180,8 @@ const EXCLUDED: Record<string, string> = {
  * neither — re-run before believing a single failure, the free tiers here throttle
  * quickly when the whole sweep runs back to back.
  */
-const PLAN_LIMIT = /insufficient credits|restricted endpoint|payment required|402|403|legacy endpoint|premium|subscription/i;
+const PLAN_LIMIT =
+  /insufficient credits|credits depleted|restricted endpoint|payment required|402|403|legacy endpoint|premium|subscription|not subscribed/i;
 
 /** Transient throttling. Free tiers here throttle hard when the whole sweep runs back to back. */
 const RATE_LIMIT = /429|too many requests|rate limit|limit reached|daily limit/i;
@@ -181,9 +191,29 @@ const RATE_LIMIT = /429|too many requests|rate limit|limit reached|daily limit/i
  * perfectly healthy; the model was slow, overloaded, or returned an error page.
  * Reporting these as DEAD points the reader at the wrong subsystem.
  */
-const LLM_PLANNING = /exceeded \d+s timeout|Failed to plan|Failed to build screening|JSON Parse error|Unrecognized token/i;
+const LLM_PLANNING = /Failed to plan|Failed to build screening|JSON Parse error|Unrecognized token/i;
 
 type Status = 'ok' | 'plan' | 'broken' | 'skipped' | 'unchecked';
+
+/**
+ * A tool that never returns used to hang the whole sweep. Twice this stalled
+ * silently on the sixth tool and had to be killed, which means the sweep could
+ * not do the one job it exists for. From the agent's side a call that never
+ * comes back is a broken tool, so it is reported as one.
+ */
+const TOOL_TIMEOUT_MS = 90_000;
+
+function withTimeout<T>(work: Promise<T>, name: string): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`no response after ${TOOL_TIMEOUT_MS / 1000}s (tool: ${name})`)),
+        TOOL_TIMEOUT_MS,
+      ).unref?.(),
+    ),
+  ]);
+}
 
 async function check(
   name: string,
@@ -194,7 +224,7 @@ async function check(
     // invoke(), not func(): invoke applies the Zod schema defaults, which is how
     // the agent actually calls a tool. Calling func() directly leaves defaulted
     // fields undefined and manufactures failures that do not exist in practice.
-    const out = String(await tool.invoke(args));
+    const out = String(await withTimeout(tool.invoke(args), name));
     const head = out.slice(0, 500);
     // Only an explicit error envelope counts as a failure. Matching plan-limit
     // words anywhere in the payload flags a web search for "403" as broken.
@@ -217,7 +247,10 @@ async function main(): Promise<void> {
   const registry = getToolRegistry(DEFAULT_MODEL);
   const results: Array<{ name: string; status: Status; detail: string }> = [];
 
+  let index = 0;
   for (const entry of registry) {
+    index += 1;
+    const position = `${String(index).padStart(3)}/${registry.length}`;
     const args = FIXTURES[entry.name];
     if (!args) {
       const reason = EXCLUDED[entry.name];
@@ -226,7 +259,7 @@ async function main(): Promise<void> {
         status: reason ? 'skipped' : 'unchecked',
         detail: reason ?? 'NO FIXTURE - this tool is untested',
       });
-      if (!reason) console.log(`--   ${entry.name.padEnd(28)} NO FIXTURE - untested`);
+      if (!reason) console.log(`${position} --   ${entry.name.padEnd(28)} NO FIXTURE - untested`);
       continue;
     }
     const tool = entry.tool as unknown as { invoke: (a: unknown) => Promise<unknown> };
@@ -245,10 +278,11 @@ async function main(): Promise<void> {
     }
     results.push({ name: entry.name, status: r.status, detail: r.detail });
     const mark = { ok: 'OK  ', plan: 'PLAN', broken: 'DEAD', skipped: 'skip', unchecked: '--  ' }[r.status];
-    console.log(`${mark} ${entry.name.padEnd(28)} ${r.detail}`);
+    console.log(`${position} ${mark} ${entry.name.padEnd(28)} ${r.detail}`);
   }
 
   const by = (s: Status) => results.filter((r) => r.status === s);
+  const nlIndent = String.fromCharCode(10) + ' '.repeat(42);
   console.log('\n--- summary');
   console.log(`ok:        ${by('ok').length}`);
   const planned = by('plan');
@@ -257,7 +291,15 @@ async function main(): Promise<void> {
     const substitute = SUBSTITUTES[r.name] ?? 'no free equivalent identified';
     console.log(`             ${r.name.padEnd(28)} use instead: ${substitute}`);
   }
-  console.log(`dead:      ${by('broken').length}  ${by('broken').map((r) => r.name).join(' ')}`);
+  const dead = by('broken');
+  console.log(`dead:      ${dead.length}`);
+  for (const r of dead) {
+    // A dead tool with a known replacement is still a redirection, not a wall.
+    const substitute = SUBSTITUTES[r.name];
+    console.log(
+      `             ${r.name.padEnd(28)} ${r.detail}${substitute ? nlIndent + `use instead: ${substitute}` : ''}`,
+    );
+  }
   console.log(`skipped:   ${by('skipped').length}  (mutating, interactive or expensive by design)`);
   console.log(`unchecked: ${by('unchecked').length}  ${by('unchecked').map((r) => r.name).join(' ')}`);
 

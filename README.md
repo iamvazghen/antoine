@@ -180,7 +180,7 @@ Key design choices:
 | Provider | Coverage |
 |---|---|
 | `polygon_stock_snapshot`, `polygon_stock_aggregates`, `polygon_forex_snapshot` | US stocks real-time + EOD |
-| `finnhub_quote`, `finnhub_company_profile`, `finnhub_peers`, `finnhub_recommendation`, `finnhub_sentiment`, `finnhub_earnings_calendar` | Analyst sentiment + earnings |
+| `finnhub_quote`, `finnhub_company_profile`, `finnhub_peers`, `finnhub_recommendation`, `finnhub_sentiment`, `finnhub_earnings_calendar`, `finnhub_insider_transactions`, `finnhub_insider_sentiment`, `finnhub_symbol_search` | Analyst sentiment, earnings, SEC Form 4 insider trades, name-to-ticker lookup |
 | `fmp_company_profile`, `fmp_ratios`, `fmp_dcf_valuation`, `fmp_income_statement`, `fmp_balance_sheet`, `fmp_earnings_calendar`, `fmp_stock_screener`, `fmp_earnings_surprises`, `fmp_price_target` | Fundamentals + DCF + analyst targets |
 | `alphavantage_stock_quote`, `alphavantage_stock_time_series`, `alphavantage_fx_rate`, `alphavantage_crypto_rating`, `alphavantage_commodity` | Equities, FX, crypto, commodities |
 | `twelvedata_time_series`, `twelvedata_quote`, `twelvedata_fx_rate` | Global equities + FX |
@@ -190,7 +190,7 @@ Key design choices:
 | `cmc_listings`, `cmc_quotes`, `cmc_global_metrics` | Crypto (alt) |
 | `rentcast_rent_estimate`, `rentcast_value_estimate` | US real estate |
 | `realtor_properties_for_sale` | US real estate listings |
-| `newsapi_everything`, `marketaux_news`, `benzinga_news` | News |
+| `newsapi_everything`, `marketaux_news`, `benzinga_news`, `benzinga_analyst_ratings` | News + analyst upgrades/downgrades and price-target revisions |
 
 ### System tools
 
@@ -508,27 +508,30 @@ All data providers are **optional**. Set the keys you care about; the rest stay 
 |---|---|
 | Frankfurter / ECB | FX rates (all major currencies) |
 | World Bank Open Data | Macro indicators for 200+ countries |
-| FRED | US Fed funds, Treasury yields, CPI, unemployment, GDP |
+| FRED | ~841,000 series: Fed funds, the full Treasury curve, real yields, credit spreads, mortgage rates, CPI, GDP, plus non-US series (German/Japanese rates, EM GDP). Searchable with `fred_search`. |
 | ECB SDMX | Eurozone policy rates, HICP inflation, FX |
-| Bank of England | UK Bank Rate + CPI inflation |
 | BIS | Cross-country central bank policy rates |
 | Bitcoin via Blockchain.com | On-chain supply, block height, mempool |
 
 ### Free with API key (rate-limited)
 
+Ceilings below are what each provider reported for this project's own keys
+(`bun run health` re-checks them). Where a tier is exhausted, the health sweep
+names the free tool to use instead rather than only reporting the failure.
+
 | Provider | Coverage | Free tier |
 |---|---|---|
-| Alpha Vantage | US stocks, FX, crypto, **commodities** | 25 calls/day |
+| Alpha Vantage | US stocks, FX, crypto, **commodities** | 25 calls/day across all its tools — reserve for commodities |
 | Finnhub | US stocks + earnings + sentiment | 60 calls/min |
 | Polygon | US stocks, options, FX | 5 calls/min |
-| FMP | US fundamentals + DCF + analyst targets | 250 calls/day |
+| FMP | US fundamentals + DCF + analyst targets | 250 calls/day (`/stable` endpoints only — `/api/v3` is 403 for accounts created after 2025-08-31) |
 | Twelve Data | Global equities + FX + crypto | 800 calls/day |
 | Tiingo | US EOD + fundamentals | 1000 calls/day |
-| EODHD | **Global equities (TICKER.EXCHANGE)** + fundamentals | 20 calls/day |
+| EODHD | **Global equities (TICKER.EXCHANGE)** + fundamentals | 20 calls/day across all EODHD tools combined — prefer `yahoo_history` |
 | CoinGecko | Crypto prices + global metrics | 10-30 calls/min |
 | CoinMarketCap | Crypto listings + quotes | 333 calls/day |
 | FRED | US macro | 120 calls/min |
-| RentCast | US rent estimates + AVM | 50 calls/month |
+| RentCast | US rent estimates + AVM | requires an active subscription; returns 403 without one, and has no free equivalent |
 | Realtor via RapidAPI | US listings | varies |
 | NewsAPI | News headlines | 100 calls/day |
 | Marketaux | News with entity sentiment | 100 calls/day |

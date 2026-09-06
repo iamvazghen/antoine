@@ -195,6 +195,32 @@ async function fetchPrices(ticker: string): Promise<{ prices: PricePoint[]; url:
 }
 
 /**
+ * Price history, Tiingo first and Yahoo when Tiingo will not serve.
+ *
+ * Tiingo's free tier allows roughly 50 requests an hour, and a universe report
+ * asks for 50 in a few minutes — so the back half of a monthly run used to come
+ * back with no prices at all. That is not a visible failure: the grade still
+ * returns, just without valuation-vs-history, momentum or relative strength,
+ * which is 36% of the short-horizon weight. Half a ranking scored on different
+ * factors than the other half is worse than one that errors.
+ */
+async function fetchPricesWithFallback(
+  ticker: string,
+): Promise<{ prices: PricePoint[]; url: string }> {
+  try {
+    return await fetchPrices(ticker);
+  } catch (primaryError) {
+    try {
+      const { fetchMonthlyCloses } = await import('../tools/finance/providers/yahoo.js');
+      return await fetchMonthlyCloses(ticker);
+    } catch {
+      // Report the Tiingo failure: it is the one the operator can act on.
+      throw primaryError;
+    }
+  }
+}
+
+/**
  * Build the grading bundle. Fundamentals are required; price history is
  * optional — without it the through-cycle factor drops out and coverage falls,
  * which the grade reports rather than hides.
@@ -206,7 +232,9 @@ export async function fetchBundle(ticker: string): Promise<TickerBundle> {
 
   const [fund, priceResult] = await Promise.all([
     fetchFinnhub(graded),
-    fetchPrices(graded).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err)))),
+    fetchPricesWithFallback(graded).catch((err: unknown) =>
+      err instanceof Error ? err : new Error(String(err)),
+    ),
   ]);
 
   const priceOk = !(priceResult instanceof Error);

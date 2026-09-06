@@ -16,7 +16,9 @@ import {
   GET_COMMODITY_DESCRIPTION,
   getFredSeries,
   getFredSeriesMulti,
+  fredSearch,
   FRED_DESCRIPTION,
+  FRED_SEARCH_DESCRIPTION,
 } from './finance/index.js';
 import { exaSearch, perplexitySearch, tavilySearch, langSearch, WEB_SEARCH_DESCRIPTION, xSearchTool, X_SEARCH_DESCRIPTION } from './search/index.js';
 import { createWebSearchTool, type WebSearchProvider } from './search/web-search.js';
@@ -52,6 +54,10 @@ import {
   screenUniverseTool,
   SCREEN_UNIVERSE_DESCRIPTION,
 } from './scoring.js';
+import { checkApiKeyExists } from '../utils/env.js';
+
+/** A key set to a `your-...` placeholder is not a configured provider. */
+const hasApiKey = (name: string): boolean => checkApiKeyExists(name);
 
 /**
  * A registered tool with its rich description for system prompt injection.
@@ -244,16 +250,16 @@ export function getToolRegistry(model: string): RegisteredTool[] {
   // Build web_search as a fallback chain over whichever providers have keys configured.
   // The user's preferred provider (set via /search) is tried first; the others act as fallbacks.
   const allWebSearchProviders: WebSearchProvider[] = [];
-  if (process.env.EXASEARCH_API_KEY) {
+  if (hasApiKey('EXASEARCH_API_KEY')) {
     allWebSearchProviders.push({ id: 'exa', name: 'Exa', tool: exaSearch });
   }
-  if (process.env.PERPLEXITY_API_KEY) {
+  if (hasApiKey('PERPLEXITY_API_KEY')) {
     allWebSearchProviders.push({ id: 'perplexity', name: 'Perplexity', tool: perplexitySearch });
   }
-  if (process.env.TAVILY_API_KEY) {
+  if (hasApiKey('TAVILY_API_KEY')) {
     allWebSearchProviders.push({ id: 'tavily', name: 'Tavily', tool: tavilySearch });
   }
-  if (process.env.LANGSEARCH_API_KEY) {
+  if (hasApiKey('LANGSEARCH_API_KEY')) {
     allWebSearchProviders.push({ id: 'langsearch', name: 'LangSearch', tool: langSearch });
   }
 
@@ -275,7 +281,7 @@ export function getToolRegistry(model: string): RegisteredTool[] {
     });
   }
 
-  if (process.env.X_BEARER_TOKEN) {
+  if (hasApiKey('X_BEARER_TOKEN')) {
     tools.push({
       name: 'x_search',
       tool: xSearchTool,
@@ -332,7 +338,7 @@ export function getToolRegistry(model: string): RegisteredTool[] {
   }
 
   // Catalyst calendar — only when at least one earnings source is configured.
-  if (process.env.FMP_API_KEY || process.env.FINNHUB_API_KEY) {
+  if (hasApiKey('FMP_API_KEY') || hasApiKey('FINNHUB_API_KEY')) {
     tools.push({
       name: 'get_catalyst_calendar',
       tool: getCatalystCalendar,
@@ -343,7 +349,7 @@ export function getToolRegistry(model: string): RegisteredTool[] {
   }
 
   // Multi-series FRED fetch — single-call macro dashboard for "rates + yields + inflation".
-  if (process.env.FRED_API_KEY) {
+  if (hasApiKey('FRED_API_KEY')) {
     tools.push({
       name: 'get_fred_series_multi',
       tool: getFredSeriesMulti,
@@ -351,10 +357,19 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       compactDescription: 'Multi-series FRED macro fetch (rates + yields + inflation in one call).',
       concurrencySafe: true,
     });
+    // Without search the agent can only fetch series IDs it already knows,
+    // which is a couple of dozen out of ~841,000.
+    tools.push({
+      name: 'fred_search',
+      tool: fredSearch,
+      description: FRED_SEARCH_DESCRIPTION,
+      compactDescription: 'Find FRED series IDs by keyword before fetching them.',
+      concurrencySafe: true,
+    });
   }
 
   // Global stock — non-US tickers via EODHD (TICKER.EXCHANGE notation).
-  if (process.env.EODHD_API_KEY) {
+  if (hasApiKey('EODHD_API_KEY')) {
     tools.push({
       name: 'get_global_stock',
       tool: getGlobalStock,
@@ -365,7 +380,7 @@ export function getToolRegistry(model: string): RegisteredTool[] {
   }
 
   // Commodities — Alpha Vantage preferred, FRED fallback for select series.
-  if (process.env.ALPHA_VANTAGE_API_KEY || process.env.FRED_API_KEY) {
+  if (hasApiKey('ALPHA_VANTAGE_API_KEY') || hasApiKey('FRED_API_KEY')) {
     tools.push({
       name: 'get_commodity',
       tool: getCommodity,

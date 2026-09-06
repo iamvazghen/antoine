@@ -94,9 +94,93 @@ const earningsCalendar = new DynamicStructuredTool({
   },
 });
 
+/**
+ * Insider transactions. get_insider_trades is backed by financialdatasets.ai,
+ * which is out of credits, so the capability was dead. Finnhub serves the same
+ * SEC Form 4 data on the free tier.
+ */
+const insiderTransactions = new DynamicStructuredTool({
+  name: 'finnhub_insider_transactions',
+  description:
+    'Insider (SEC Form 4) transactions for a US company from Finnhub: who traded, share counts, transaction code (P purchase, S sale), price and filing date. Free tier. Use this when get_insider_trades is unavailable.',
+  schema: z.object({
+    ticker: z.string().describe('US stock ticker, e.g. "AAPL".'),
+    from: z.string().optional().describe('Start date YYYY-MM-DD. Defaults to 6 months ago.'),
+    to: z.string().optional().describe('End date YYYY-MM-DD. Defaults to today.'),
+  }),
+  func: async ({ ticker, from, to }) => {
+    const today = new Date();
+    const sixMonthsAgo = new Date(today.getTime() - 182 * 24 * 60 * 60 * 1000);
+    return callFinnhub(
+      '/stock/insider-transactions',
+      {
+        symbol: ticker,
+        from: from ?? sixMonthsAgo.toISOString().slice(0, 10),
+        to: to ?? today.toISOString().slice(0, 10),
+      },
+      TTL_FUNDAMENTALS,
+      `insider transactions ${ticker.toUpperCase()}`,
+    );
+  },
+});
+
+/**
+ * Aggregated insider buying/selling ratio. Cheaper to read than a Form 4 list
+ * when the question is directional ("are insiders buying?").
+ */
+const insiderSentiment = new DynamicStructuredTool({
+  name: 'finnhub_insider_sentiment',
+  description:
+    'Monthly aggregated insider sentiment for a US company from Finnhub: net share change and a monthly share purchase ratio (MSPR, -100 to 100). Use for a directional read on insider activity rather than individual filings.',
+  schema: z.object({
+    ticker: z.string().describe('US stock ticker, e.g. "AAPL".'),
+    from: z.string().optional().describe('Start date YYYY-MM-DD. Defaults to 2 years ago.'),
+    to: z.string().optional().describe('End date YYYY-MM-DD. Defaults to today.'),
+  }),
+  func: async ({ ticker, from, to }) => {
+    const today = new Date();
+    const twoYearsAgo = new Date(today.getTime() - 730 * 24 * 60 * 60 * 1000);
+    return callFinnhub(
+      '/stock/insider-sentiment',
+      {
+        symbol: ticker,
+        from: from ?? twoYearsAgo.toISOString().slice(0, 10),
+        to: to ?? today.toISOString().slice(0, 10),
+      },
+      TTL_FUNDAMENTALS,
+      `insider sentiment ${ticker.toUpperCase()}`,
+    );
+  },
+});
+
+/**
+ * Name to ticker. get_available_stock_tickers is backed by financialdatasets.ai
+ * and is out of credits, so "analyse Rheinmetall" had no way to reach RHM.DE.
+ * Finnhub's symbol lookup is free and covers non-US listings.
+ */
+const symbolSearch = new DynamicStructuredTool({
+  name: 'finnhub_symbol_search',
+  description:
+    'Resolves a company name to its ticker symbol(s) via Finnhub, including non-US listings (e.g. "Rheinmetall" to RHM.DE). Use this whenever the user names a company you do not have a ticker for, instead of guessing one.',
+  schema: z.object({
+    query: z.string().describe('Company name or partial symbol, e.g. "Rheinmetall" or "BYD".'),
+  }),
+  func: async ({ query }) =>
+    callFinnhub('/search', { q: query }, TTL_FUNDAMENTALS, `symbol search ${query}`),
+});
 export function getLeaves(): StructuredToolInterface[] | null {
   if (!process.env.FINNHUB_API_KEY) return null;
-  return [quote, profile, peers, recommendation, sentiment, earningsCalendar];
+  return [
+    quote,
+    profile,
+    peers,
+    recommendation,
+    sentiment,
+    earningsCalendar,
+    insiderTransactions,
+    insiderSentiment,
+    symbolSearch,
+  ];
 }
 
 export const finnhubQuote = quote;
@@ -105,3 +189,6 @@ export const finnhubPeers = peers;
 export const finnhubRecommendation = recommendation;
 export const finnhubSentiment = sentiment;
 export const finnhubEarningsCalendar = earningsCalendar;
+export const finnhubInsiderTransactions = insiderTransactions;
+export const finnhubInsiderSentiment = insiderSentiment;
+export const finnhubSymbolSearch = symbolSearch;

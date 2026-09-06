@@ -10,6 +10,10 @@ import { z } from 'zod';
 import { callProvider, TTL_INTRADAY_QUOTE, TTL_EOD_PRICES, TTL_NEWS } from '../provider-call.js';
 import { formatToolResult, type SourceRef } from '../../types.js';
 
+// The free plan allows 25 API calls a day across every Alpha Vantage tool
+// combined - roughly one research session. finnhub_quote and yahoo_quote have
+// far higher ceilings; spend Alpha Vantage on what only it covers, which here
+// is commodities.
 const LABEL = 'Alpha Vantage';
 const BASE_URL = 'https://www.alphavantage.co/query';
 

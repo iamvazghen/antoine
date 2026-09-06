@@ -224,6 +224,35 @@ const history = new DynamicStructuredTool({
   },
 });
 
+/**
+ * Monthly closes for the grading engine, back as far as the listing goes.
+ *
+ * The grader's primary price source is Tiingo, whose free tier allows about
+ * 50 requests an hour — a 50-name universe report exhausts it partway through.
+ * Losing prices silently costs the short horizon 36% of its weight (valuation
+ * vs own history, momentum, relative strength) and makes the surviving grades
+ * incomparable with each other, so the ranking degrades without ever failing.
+ * Yahoo needs no key and has no such ceiling.
+ */
+export async function fetchMonthlyCloses(
+  ticker: string,
+): Promise<{ prices: Array<{ date: string; close: number }>; url: string }> {
+  const symbol = toYahooSymbol(ticker);
+  const { timestamps, quote: q, url } = await fetchChart(
+    symbol,
+    { interval: '1mo', range: 'max' },
+    TTL_EOD_PRICES,
+  );
+  const prices = timestamps
+    .map((t, i) => ({
+      date: new Date(t * 1000).toISOString().slice(0, 10),
+      close: q.close?.[i] ?? null,
+    }))
+    .filter((p): p is { date: string; close: number } => typeof p.close === 'number');
+  if (prices.length === 0) throw new Error(`[Yahoo Finance] no price history for ${ticker}`);
+  return { prices, url };
+}
+
 export function getLeaves(): StructuredToolInterface[] | null {
   // No key required, so this provider is always available.
   return [quote, history];
