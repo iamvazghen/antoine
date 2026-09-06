@@ -1,27 +1,21 @@
 /**
- * Region-aware helpers for non-US tickers. The roadmap providers (EODHD,
- * Tiingo, Twelve Data, Polygon) accept different ticker formats:
- *   - US:      AAPL, NVDA, MSFT (bare, no suffix)
- *   - LSE:     VOD.LSE, BP.LSE
- *   - Euronext: AIR.PA (Paris), ASML.AS (Amsterdam)
- *   - Xetra:   SAP.DE, BMW.DE
- *   - Swiss:   NESN.SW
- *   - Tokyo:   7203.TSE
- *   - Hong Kong: 0700.HK
- *   - Shanghai: 600519.SHG (EODHD notation)
- *   - Shenzhen: 000001.SHE
- *   - NSE:     RELIANCE.NSE
- *   - BSE:     RELIANCE.BSE
- *   - ASX:     BHP.AX
- *   - TSX:     SHOP.TO
- *   - TSX-V:   .V (venture)
- *   - KRX:     005930.KS (Samsung)
- *   - SGX:     D05.SI
+ * Region metadata for non-US tickers, keyed by EODHD exchange suffix.
  *
- * Ponytail: just a lookup table + helpers — the actual EODHD endpoint is
- * already wired in `eodhd.ts`. This module adds the *region semantics*
- * (currency, trading hours, market cap unit) that the agent needs to
- * reason about non-US holdings.
+ * Generated from EODHD's own exchange list rather than written by hand, because
+ * the hand-written version had four codes that simply do not exist — .AX, .KS,
+ * .DE and .NSE all returned "Ticker Not Found" — and one that was actively
+ * wrong: .SA was labelled Tadawul/Riyadh when EODHD uses it for Sao Paulo, so
+ * a question about a Saudi stock answered with a Brazilian one priced in BRL.
+ *
+ * Correct codes for those: .AU (Australia), .KO / .KQ (Korea), .XETRA (plus the
+ * German regionals .F .DU .MU .STU .HA .HM), and Brazil for .SA.
+ *
+ * Not reachable on this provider at all: Japan, India, Singapore, Israel,
+ * Saudi Arabia, Turkey, Russia, and every Caucasus exchange (Georgia, Armenia,
+ * Azerbaijan). For those, fall back to web_search or a US-listed ADR.
+ *
+ * Trading hours are recorded only where they are actually known; guessing
+ * session times for 60 venues would put wrong numbers in front of the agent.
  */
 
 export interface RegionMeta {
@@ -33,46 +27,86 @@ export interface RegionMeta {
   currency: string;
   /** Display name (English). */
   name: string;
-  /** Open time UTC, 24h format "HH:MM". */
-  openUtc: string;
-  /** Close time UTC. */
-  closeUtc: string;
+  /** Open time UTC, 24h format "HH:MM". Absent where the session times are not known. */
+  openUtc?: string;
+  /** Close time UTC. Absent where the session times are not known. */
+  closeUtc?: string;
   /** Reporting unit (1 = raw, 1000 = thousands, 1000000 = millions). */
   unitScale: number;
 }
 
+// London and Johannesburg quote in the sub-unit — pence and cents — not pounds
+// and rand. EODHD's own metadata says GBP/ZAR, which would overstate every
+// price by 100x if taken at face value.
 const REGIONS: Record<string, RegionMeta> = {
-  US: { exchange: 'US', country: 'US', currency: 'USD', name: 'United States', openUtc: '14:30', closeUtc: '21:00', unitScale: 1 },
-  LSE: { exchange: 'LSE', country: 'GB', currency: 'GBp', name: 'London', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 }, // GBp = pence
-  PA: { exchange: 'PA', country: 'FR', currency: 'EUR', name: 'Euronext Paris', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
   AS: { exchange: 'AS', country: 'NL', currency: 'EUR', name: 'Euronext Amsterdam', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  BE: { exchange: 'BE', country: 'BE', currency: 'EUR', name: 'Euronext Brussels', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  DE: { exchange: 'DE', country: 'DE', currency: 'EUR', name: 'Xetra (Frankfurt)', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  SW: { exchange: 'SW', country: 'CH', currency: 'CHF', name: 'SIX Swiss', openUtc: '07:30', closeUtc: '16:30', unitScale: 1 },
-  MC: { exchange: 'MC', country: 'ES', currency: 'EUR', name: 'BME (Madrid)', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  MI: { exchange: 'MI', country: 'IT', currency: 'EUR', name: 'Borsa Italiana', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  ST: { exchange: 'ST', country: 'SE', currency: 'SEK', name: 'Nasdaq Stockholm', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  CO: { exchange: 'CO', country: 'DK', currency: 'DKK', name: 'Nasdaq Copenhagen', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  OL: { exchange: 'OL', country: 'NO', currency: 'NOK', name: 'Oslo Børs', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  HE: { exchange: 'HE', country: 'FI', currency: 'EUR', name: 'Nasdaq Helsinki', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  VI: { exchange: 'VI', country: 'AT', currency: 'EUR', name: 'Vienna', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  AT: { exchange: 'AT', country: 'GR', currency: 'EUR', name: 'Athens Exchange', openUtc: '07:00', closeUtc: '15:20', unitScale: 1 },
+  AU: { exchange: 'AU', country: 'AU', currency: 'AUD', name: 'Australian Securities Exchange', openUtc: '00:00', closeUtc: '06:00', unitScale: 1 },
+  BA: { exchange: 'BA', country: 'AR', currency: 'ARS', name: 'Buenos Aires Exchange', unitScale: 1 },
+  BC: { exchange: 'BC', country: 'MA', currency: 'MAD', name: 'Casablanca Stock Exchange', unitScale: 1 },
+  BK: { exchange: 'BK', country: 'TH', currency: 'THB', name: 'Thailand Exchange', unitScale: 1 },
+  BR: { exchange: 'BR', country: 'BE', currency: 'EUR', name: 'Euronext Brussels', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  BUD: { exchange: 'BUD', country: 'HU', currency: 'HUF', name: 'Budapest Stock Exchange', unitScale: 1 },
+  CM: { exchange: 'CM', country: 'LK', currency: 'LKR', name: 'Colombo Stock Exchange', unitScale: 1 },
+  CO: { exchange: 'CO', country: 'DK', currency: 'DKK', name: 'Copenhagen Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  DSE: { exchange: 'DSE', country: 'TZ', currency: 'TZS', name: 'Dar es Salaam Stock Exchange', unitScale: 1 },
+  DU: { exchange: 'DU', country: 'DE', currency: 'EUR', name: 'Dusseldorf Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  EGX: { exchange: 'EGX', country: 'EG', currency: 'EGP', name: 'Egyptian Exchange', unitScale: 1 },
+  F: { exchange: 'F', country: 'DE', currency: 'EUR', name: 'Frankfurt Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  GSE: { exchange: 'GSE', country: 'GH', currency: 'GHS', name: 'Ghana Stock Exchange', unitScale: 1 },
+  HA: { exchange: 'HA', country: 'DE', currency: 'EUR', name: 'Hanover Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  HE: { exchange: 'HE', country: 'FI', currency: 'EUR', name: 'Helsinki Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  // Hong Kong is absent from EODHD's published exchange list but serves data
+  // fine (0700.HK verified). The list is not authoritative for what works.
+  HK: { exchange: 'HK', country: 'HK', currency: 'HKD', name: 'Hong Kong Exchange', openUtc: '01:30', closeUtc: '08:00', unitScale: 1 },
+  HM: { exchange: 'HM', country: 'DE', currency: 'EUR', name: 'Hamburg Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  IR: { exchange: 'IR', country: 'IE', currency: 'EUR', name: 'Irish Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  JK: { exchange: 'JK', country: 'ID', currency: 'IDR', name: 'Jakarta Exchange', unitScale: 1 },
+  JSE: { exchange: 'JSE', country: 'ZA', currency: 'ZAc', name: 'Johannesburg Exchange', openUtc: '07:00', closeUtc: '15:00', unitScale: 1 },
+  KAR: { exchange: 'KAR', country: 'PK', currency: 'PKR', name: 'Karachi Stock Exchange', unitScale: 1 },
+  KLSE: { exchange: 'KLSE', country: 'MY', currency: 'MYR', name: 'Kuala Lumpur Exchange', unitScale: 1 },
+  KO: { exchange: 'KO', country: 'KR', currency: 'KRW', name: 'Korea Stock Exchange', openUtc: '00:00', closeUtc: '06:30', unitScale: 1 },
+  KQ: { exchange: 'KQ', country: 'KR', currency: 'KRW', name: 'KOSDAQ', openUtc: '00:00', closeUtc: '06:30', unitScale: 1 },
+  LIM: { exchange: 'LIM', country: 'PE', currency: 'PEN', name: 'Bolsa de Valores de Lima', unitScale: 1 },
   LS: { exchange: 'LS', country: 'PT', currency: 'EUR', name: 'Euronext Lisbon', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  IR: { exchange: 'IR', country: 'IE', currency: 'EUR', name: 'Euronext Dublin', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
-  TSE: { exchange: 'TSE', country: 'JP', currency: 'JPY', name: 'Tokyo', openUtc: '00:00', closeUtc: '06:00', unitScale: 1 },
-  HK: { exchange: 'HK', country: 'HK', currency: 'HKD', name: 'Hong Kong', openUtc: '01:30', closeUtc: '08:00', unitScale: 1 },
-  SHG: { exchange: 'SHG', country: 'CN', currency: 'CNY', name: 'Shanghai', openUtc: '01:30', closeUtc: '07:00', unitScale: 1 },
-  SHE: { exchange: 'SHE', country: 'CN', currency: 'CNY', name: 'Shenzhen', openUtc: '01:30', closeUtc: '07:00', unitScale: 1 },
-  NSE: { exchange: 'NSE', country: 'IN', currency: 'INR', name: 'NSE India', openUtc: '03:45', closeUtc: '10:00', unitScale: 1 },
-  BSE: { exchange: 'BSE', country: 'IN', currency: 'INR', name: 'BSE India', openUtc: '03:45', closeUtc: '10:00', unitScale: 1 },
-  AX: { exchange: 'AX', country: 'AU', currency: 'AUD', name: 'ASX (Sydney)', openUtc: '00:00', closeUtc: '06:00', unitScale: 1 },
-  NZ: { exchange: 'NZ', country: 'NZ', currency: 'NZD', name: 'NZX (Wellington)', openUtc: '00:00', closeUtc: '05:00', unitScale: 1 },
-  TO: { exchange: 'TO', country: 'CA', currency: 'CAD', name: 'TSX (Toronto)', openUtc: '14:00', closeUtc: '21:00', unitScale: 1 },
-  V: { exchange: 'V', country: 'CA', currency: 'CAD', name: 'TSX Venture', openUtc: '14:00', closeUtc: '21:00', unitScale: 1 },
-  KS: { exchange: 'KS', country: 'KR', currency: 'KRW', name: 'KRX (Seoul)', openUtc: '00:00', closeUtc: '06:30', unitScale: 1 },
-  SI: { exchange: 'SI', country: 'SG', currency: 'SGD', name: 'SGX (Singapore)', openUtc: '01:00', closeUtc: '09:00', unitScale: 1 },
-  TW: { exchange: 'TW', country: 'TW', currency: 'TWD', name: 'TWSE (Taipei)', openUtc: '01:00', closeUtc: '05:30', unitScale: 1 },
-  T: { exchange: 'T', country: 'IL', currency: 'ILS', name: 'TASE (Tel Aviv)', openUtc: '08:00', closeUtc: '15:30', unitScale: 1 },
-  SA: { exchange: 'SA', country: 'SA', currency: 'SAR', name: 'Tadawul (Riyadh)', openUtc: '07:00', closeUtc: '11:30', unitScale: 1 },
+  LSE: { exchange: 'LSE', country: 'GB', currency: 'GBp', name: 'London Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  LU: { exchange: 'LU', country: 'LU', currency: 'EUR', name: 'Luxembourg Stock Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  LUSE: { exchange: 'LUSE', country: 'ZM', currency: 'ZMW', name: 'Lusaka Stock Exchange', unitScale: 1 },
+  MC: { exchange: 'MC', country: 'ES', currency: 'EUR', name: 'Madrid Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  MSE: { exchange: 'MSE', country: 'MW', currency: 'MWK', name: 'Malawi Stock Exchange', unitScale: 1 },
+  MU: { exchange: 'MU', country: 'DE', currency: 'EUR', name: 'Munich Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  MX: { exchange: 'MX', country: 'MX', currency: 'MXN', name: 'Mexican Exchange', openUtc: '14:30', closeUtc: '21:00', unitScale: 1 },
+  NEO: { exchange: 'NEO', country: 'CA', currency: 'CAD', name: 'NEO Exchange', openUtc: '14:30', closeUtc: '21:00', unitScale: 1 },
+  OL: { exchange: 'OL', country: 'NO', currency: 'NOK', name: 'Oslo Stock Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  PA: { exchange: 'PA', country: 'FR', currency: 'EUR', name: 'Euronext Paris', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  PR: { exchange: 'PR', country: 'CZ', currency: 'CZK', name: 'Prague Stock Exchange', unitScale: 1 },
+  PSE: { exchange: 'PSE', country: 'PH', currency: 'PHP', name: 'Philippine Stock Exchange', unitScale: 1 },
+  RO: { exchange: 'RO', country: 'RO', currency: 'RON', name: 'Bucharest Stock Exchange', unitScale: 1 },
+  RSE: { exchange: 'RSE', country: 'RW', currency: 'RWF ', name: 'Rwanda Stock Exchange', unitScale: 1 },
+  SA: { exchange: 'SA', country: 'BR', currency: 'BRL', name: 'Sao Paulo Exchange', openUtc: '13:00', closeUtc: '21:00', unitScale: 1 },
+  SEM: { exchange: 'SEM', country: 'MU', currency: 'MUR', name: 'Stock Exchange of Mauritius', unitScale: 1 },
+  SHE: { exchange: 'SHE', country: 'CN', currency: 'CNY', name: 'Shenzhen Stock Exchange', openUtc: '01:30', closeUtc: '07:00', unitScale: 1 },
+  SHG: { exchange: 'SHG', country: 'CN', currency: 'CNY', name: 'Shanghai Stock Exchange', openUtc: '01:30', closeUtc: '07:00', unitScale: 1 },
+  SN: { exchange: 'SN', country: 'CL', currency: 'CLP', name: 'Chilean Stock Exchange', unitScale: 1 },
+  ST: { exchange: 'ST', country: 'SE', currency: 'SEK', name: 'Stockholm Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  STU: { exchange: 'STU', country: 'DE', currency: 'EUR', name: 'Stuttgart Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  SW: { exchange: 'SW', country: 'CH', currency: 'CHF', name: 'SIX Swiss Exchange', openUtc: '07:30', closeUtc: '16:30', unitScale: 1 },
+  TO: { exchange: 'TO', country: 'CA', currency: 'CAD', name: 'Toronto Exchange', openUtc: '14:30', closeUtc: '21:00', unitScale: 1 },
+  TW: { exchange: 'TW', country: 'TW', currency: 'TWD', name: 'Taiwan Stock Exchange', openUtc: '01:00', closeUtc: '05:30', unitScale: 1 },
+  TWO: { exchange: 'TWO', country: 'TW', currency: 'TWD', name: 'Taiwan OTC Exchange', openUtc: '01:00', closeUtc: '05:30', unitScale: 1 },
+  US: { exchange: 'US', country: 'US', currency: 'USD', name: 'USA Stocks', openUtc: '14:30', closeUtc: '21:00', unitScale: 1 },
+  USE: { exchange: 'USE', country: 'UG', currency: 'UGX', name: 'Uganda Securities Exchange', unitScale: 1 },
+  V: { exchange: 'V', country: 'CA', currency: 'CAD', name: 'TSX Venture Exchange', openUtc: '14:30', closeUtc: '21:00', unitScale: 1 },
+  VFEX: { exchange: 'VFEX', country: 'ZW', currency: 'ZWL', name: 'Victoria Falls Stock Exchange', unitScale: 1 },
+  VI: { exchange: 'VI', country: 'AT', currency: 'EUR', name: 'Vienna Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  VN: { exchange: 'VN', country: 'VN', currency: 'VND', name: 'Vietnam Stocks', unitScale: 1 },
+  WAR: { exchange: 'WAR', country: 'PL', currency: 'PLN', name: 'Warsaw Stock Exchange', openUtc: '08:00', closeUtc: '15:50', unitScale: 1 },
+  XBOT: { exchange: 'XBOT', country: 'BW', currency: 'BWP', name: 'Botswana Stock Exchange', unitScale: 1 },
+  XETRA: { exchange: 'XETRA', country: 'DE', currency: 'EUR', name: 'XETRA Stock Exchange', openUtc: '08:00', closeUtc: '16:30', unitScale: 1 },
+  XNAI: { exchange: 'XNAI', country: 'KE', currency: 'KES', name: 'Nairobi Securities Exchange', unitScale: 1 },
+  XNSA: { exchange: 'XNSA', country: 'NG', currency: 'NGN', name: 'Nigerian Stock Exchange', unitScale: 1 },
+  XZIM: { exchange: 'XZIM', country: 'ZW', currency: 'ZWL', name: 'Zimbabwe Stock Exchange', unitScale: 1 },
+  ZSE: { exchange: 'ZSE', country: 'HR', currency: 'EUR', name: 'Zagreb Stock Exchange', unitScale: 1 },
 };
 
 /** Look up region metadata by EODHD exchange suffix. */

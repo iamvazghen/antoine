@@ -32,6 +32,23 @@ Do this FIRST, before any other research. It is two API calls and it hands you
 20+ years of ROIC, margin history, valuation percentile and drawdown behaviour in
 one result — most of what the other tools would take a dozen calls to assemble.
 
+## Non-US tickers
+
+Fundamental grading covers **US-listed securities only** on the current data plan.
+`grade_ticker` handles this for you rather than failing blindly:
+
+- A cross-listed name resolves to its US line automatically (`SAP.DE` -> `SAP`,
+  `ASML.AS` -> `ASML`). The result carries `gradedAs` and a `listingNote` —
+  **quote that note to the user**, because the multiples are the US-listed ones.
+- A name with no US line (`PETR4.SA`, `0700.HK`) returns an error naming the ADR
+  to try instead. Grade the ADR, and say that is what you did.
+- For price, market cap and trading data on the local line, `get_global_stock`
+  covers ~65 exchanges including all of Europe, most of Asia, South America and
+  Africa. It just cannot produce a grade.
+- No provider here reaches Japan, India, Singapore, Israel, Saudi Arabia, Turkey,
+  Russia or the Caucasus. Say so plainly rather than improvising from web search
+  and presenting it as equivalent.
+
 ## Step 2: Read the factor breakdown
 
 The factors are already sorted by contribution. For each horizon identify:

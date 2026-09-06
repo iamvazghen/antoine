@@ -6,6 +6,7 @@ import type { TickerBundle } from './data.js';
 function bundle(over: Partial<TickerBundle> = {}): TickerBundle {
   return {
     ticker: 'TEST',
+    gradedAs: 'TEST',
     asOf: '2026-09-06T00:00:00.000Z',
     metric: {},
     series: {},

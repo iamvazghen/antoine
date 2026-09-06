@@ -31,6 +31,10 @@ export interface HorizonGrade {
 
 export interface Grade {
   ticker: string;
+  /** The US-listed symbol the fundamentals came from; differs for a foreign listing. */
+  gradedAs: string;
+  /** Present when a foreign ticker was graded through its US line — quote it to the user. */
+  listingNote?: string;
   asOf: string;
   price: number | null;
   short: HorizonGrade;
@@ -90,6 +94,8 @@ function gradeHorizon(b: TickerBundle, horizon: Horizon): HorizonGrade {
 export function gradeBundle(b: TickerBundle): Grade {
   return {
     ticker: b.ticker,
+    gradedAs: b.gradedAs,
+    listingNote: b.listingNote,
     asOf: b.asOf,
     price: latestPrice(b),
     short: gradeHorizon(b, 'short'),

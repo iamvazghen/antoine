@@ -17,17 +17,27 @@ const LABEL = 'Global Stock (EODHD)';
 
 export const GET_GLOBAL_STOCK_DESCRIPTION = `
 Region-aware stock quote for non-US tickers. Normalizes the EODHD
-TICKER.EXCHANGE notation (e.g., "VOD.LSE", "7203.TSE", "RELIANCE.NSE",
-"0700.HK", "ASML.AS", "SHOP.TO") and returns a price + market cap in the
-region's local currency.
+TICKER.EXCHANGE notation (e.g., "VOD.LSE", "0700.HK", "ASML.AS", "SHOP.TO",
+"PETR4.SA", "NPN.JSE") and returns a price + market cap in the region's local
+currency.
+
+Covers ~65 exchanges: all of Europe, most of Asia (China, Hong Kong, Korea,
+Taiwan, Thailand, Indonesia, Malaysia, Vietnam, Philippines, Pakistan, Sri
+Lanka), Australia, Canada, Mexico, all of South America (Brazil, Argentina,
+Chile, Peru) and Africa (South Africa, Egypt, Nigeria, Kenya, Morocco, Ghana,
+Botswana, Zambia, Tanzania, Uganda, Rwanda, Malawi, Mauritius, Zimbabwe).
+
+NOT available on this provider: Japan, India, Singapore, Israel, Saudi Arabia,
+Turkey, Russia, and the Caucasus (Georgia, Armenia, Azerbaijan). For those use
+a US-listed ADR or web_search, and say which you used.
 
 Use this when the ticker is anything other than a bare US symbol. For US
 tickers, use get_stock_price / get_market_data instead.
 
 Examples:
 - "VOD.LSE" → Vodafone on the London Stock Exchange (price in GBp)
-- "7203.TSE" → Toyota on the Tokyo Stock Exchange (price in JPY)
-- "RELIANCE.NSE" → Reliance Industries on NSE India (price in INR)
+- "PETR4.SA" → Petrobras on B3 Sao Paulo (price in BRL)
+- "NPN.JSE" → Naspers on Johannesburg (price in ZAc, cents)
 - "ASML.AS" → ASML on Euronext Amsterdam (price in EUR)
 - "0700.HK" → Tencent on Hong Kong (price in HKD)
 - "SHOP.TO" → Shopify on TSX (price in CAD)
@@ -121,7 +131,8 @@ export const getGlobalStock = new DynamicStructuredTool({
       region: region.name,
       country: region.country,
       currency: region.currency,
-      trading_hours_utc: `${region.openUtc}-${region.closeUtc}`,
+      trading_hours_utc:
+        region.openUtc && region.closeUtc ? `${region.openUtc}-${region.closeUtc}` : 'not recorded',
       as_of: latest?.date ?? null,
       close: latest?.close ?? null,
       open: latest?.open ?? null,

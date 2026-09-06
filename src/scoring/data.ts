@@ -32,6 +32,10 @@ export interface PricePoint {
 
 export interface TickerBundle {
   ticker: string;
+  /** The US-listed symbol the fundamentals actually came from. */
+  gradedAs: string;
+  /** Set when `ticker` was a foreign listing and grading fell back to its US line. */
+  listingNote?: string;
   asOf: string;
   /** Finnhub snapshot metrics. Margins/growth here are PERCENTAGES (33.17 = 33.17%). */
   metric: Record<string, number | string | null>;
@@ -79,6 +83,58 @@ export function series(
     if (v !== null) out.push(asPercent ? v * 100 : v);
   }
   return out;
+}
+
+
+/**
+ * Resolve a foreign listing to the US line the fundamentals provider can serve.
+ *
+ * The fundamentals plan is US-only: SAP.DE, PETR4.SA and 0700.HK all come back
+ * "You don't have access to this resource." Many large foreign companies are
+ * cross-listed under the same root symbol (SAP.DE -> SAP, ASML.AS -> ASML), and
+ * an exact-symbol match against the US symbol search is a reliable enough test
+ * of that. Company-name search is not — "Petrobras" and "Nestle" both return
+ * nothing — so this deliberately does not guess: it either finds an exact US
+ * symbol or reports the limitation with something the user can act on.
+ */
+async function resolveUsListing(ticker: string): Promise<{ symbol: string; note?: string }> {
+  const dot = ticker.indexOf('.');
+  if (dot === -1) return { symbol: ticker };
+
+  const suffix = ticker.slice(dot + 1);
+  if (suffix === 'US') return { symbol: ticker.slice(0, dot) };
+
+  const bare = ticker.slice(0, dot);
+  const token = process.env.FINNHUB_API_KEY;
+  if (!token) throw new Error('FINNHUB_API_KEY is not set');
+
+  try {
+    const res = await callProvider({
+      provider: 'finnhub',
+      endpoint: 'symbol_search',
+      params: { q: bare },
+      url: `https://finnhub.io/api/v1/search?q=${encodeURIComponent(bare)}&exchange=US&token=${token}`,
+      ttlMs: TTL_FUNDAMENTALS,
+    });
+    const results = ((res.data as { result?: Array<{ symbol?: string; description?: string; type?: string }> })
+      .result ?? []);
+    const exact = results.find((r) => r.symbol?.toUpperCase() === bare);
+    if (exact?.symbol) {
+      return {
+        symbol: exact.symbol.toUpperCase(),
+        note: `${ticker} is not covered by the fundamentals plan (US listings only); graded the US line ${exact.symbol.toUpperCase()}${exact.type ? ` (${exact.type})` : ''} instead. Prices and multiples are the US-listed ones.`,
+      };
+    }
+  } catch {
+    // Fall through to the explicit error below — a failed lookup should not
+    // masquerade as "no such company".
+  }
+
+  throw new Error(
+    `Fundamental grading covers US-listed securities only on the current data plan, and no US listing was found for ${ticker}. ` +
+      `Grade its US ADR directly if it has one (for example PBR for PETR4.SA, TCEHY for 0700.HK, NSRGY for NESN.SW), ` +
+      `or use get_global_stock for price and market data on the local line.`,
+  );
 }
 
 async function fetchFinnhub(ticker: string): Promise<{
@@ -145,14 +201,19 @@ async function fetchPrices(ticker: string): Promise<{ prices: PricePoint[]; url:
  */
 export async function fetchBundle(ticker: string): Promise<TickerBundle> {
   const t = ticker.trim().toUpperCase();
+  const listing = await resolveUsListing(t);
+  const graded = listing.symbol;
+
   const [fund, priceResult] = await Promise.all([
-    fetchFinnhub(t),
-    fetchPrices(t).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err)))),
+    fetchFinnhub(graded),
+    fetchPrices(graded).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err)))),
   ]);
 
   const priceOk = !(priceResult instanceof Error);
   return {
     ticker: t,
+    gradedAs: graded,
+    listingNote: listing.note,
     asOf: new Date().toISOString(),
     metric: fund.metric,
     series: fund.series,
