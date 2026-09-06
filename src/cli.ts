@@ -13,6 +13,8 @@ import {
   getSearchProviderDisplayName,
 } from './utils/env.js';
 import { antoinePath } from './utils/paths.js';
+import { HelpPanelComponent } from './components/help-panel.js';
+import { getModelCapabilities } from './model/capabilities.js';
 import { defaultQueue } from './utils/message-queue.js';
 import { logger } from './utils/logger.js';
 import {
@@ -163,6 +165,7 @@ function renderEvent(
   const event = display.event;
 
   if (event.type === 'reasoning') {
+    if (!showThinking) return;
     chatLog.addReasoning(event.content, event.model);
     return;
   }
@@ -227,6 +230,9 @@ function renderEvent(
     chatLog.addCompaction(event.success ?? false, event.preCompactTokens, event.postCompactTokens);
   }
 }
+
+/** Whether reasoning blocks are displayed. Toggled with /thinking. */
+let showThinking = getSetting<boolean>('showThinking', true);
 
 export async function runCli(argv: string[] = process.argv.slice(2)) {
   const resumeRequest = parseResumeArg(argv);
@@ -395,7 +401,10 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
     },
   );
 
-  const intro = new IntroComponent(modelSelection.model);
+  const intro = new IntroComponent(
+    modelSelection.model,
+    getProviderById(modelSelection.provider)?.displayName ?? modelSelection.provider,
+  );
   const errorText = new Text('', 0, 0);
   const workingIndicator = new WorkingIndicatorComponent(tui);
   workingIndicator.setTurnStatsProvider(() => agentRunner.turnStats);
@@ -562,24 +571,6 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
   let slashSelectedIndex = 0;
   let slashActive = false;
 
-  const HELP_TEXT = `Keyboard Shortcuts
-  esc          Interrupt query / clear input
-   ctrl+c       Exit Antoine
-  ctrl+p       Open command palette (fuzzy slash / session / ticker search)
-  /model       Switch LLM provider and model
-  /search      Choose preferred web search provider
-  /theme       Switch color theme (emerald · sapphire · amethyst · obsidian)
-  /rules       Show research rules
-  /sessions    List saved sessions you can resume
-  /resume      Resume your most recent previous session
-  /providers   Show which roadmap data providers are active
-  /cost        Show session cost or set a cap: /cost cap 5
-  /watch       Add tickers to the watchlist: /watch AAPL NVDA
-  /unwatch     Remove tickers
-  /clear       Clear conversation
-  ↑ / ↓        Navigate input history
-
-  Tip: launch with "antoine --resume" to continue your last session.`;
 
   // Replay a saved session into the live view and re-seed model context, then
   // point the active store at it so new turns continue that thread.
@@ -698,10 +689,59 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
         break;
       }
       case 'help':
-        chatLog.addChild(new Spacer(1));
-        chatLog.addChild(new Text(theme.muted(HELP_TEXT), 0, 0));
+        // Generated from the command registry, so it cannot drift.
+        chatLog.addChild(new HelpPanelComponent());
         tui.requestRender();
         break;
+      case 'grade': {
+        const ticker = rest.trim().toUpperCase();
+        if (!ticker) {
+          chatLog.addChild(new Text(theme.warning('Usage: /grade AAPL'), 0, 0));
+          tui.requestRender();
+          break;
+        }
+        // Hand it to the agent as a normal turn: the grade-investment skill
+        // does the work, and the transcript reads the same as if typed.
+        await handleSubmit(
+          `Grade ${ticker} using grade_ticker. Give both horizons, the factors that drove each, and what would change your mind.`,
+        );
+        break;
+      }
+      case 'report': {
+        const horizon = rest.trim().toLowerCase() === 'short' ? 'short' : 'long';
+        await handleSubmit(
+          `Run the periodic review: investment_report with horizon ${horizon}. Lead with what changed since the last run.`,
+        );
+        break;
+      }
+      case 'thinking': {
+        const arg = rest.trim().toLowerCase();
+        const caps = getModelCapabilities(modelSelection.model);
+        if (arg === 'on' || arg === 'off') {
+          setSetting('showThinking', arg === 'on');
+          showThinking = arg === 'on';
+        }
+        chatLog.addChild(new Spacer(1));
+        chatLog.addChild(
+          new Text(
+            `  ${theme.muted('Reasoning blocks:')} ${showThinking ? theme.success('shown') : theme.muted('hidden')}`,
+            0,
+            0,
+          ),
+        );
+        chatLog.addChild(
+          new Text(
+            caps.reasoning
+              ? `  ${theme.muted('Current model')} ${theme.primaryLight(modelSelection.model)} ${theme.muted('is a thinking model — it produces reasoning to show.')}`
+              : `  ${theme.muted('Current model')} ${theme.primaryLight(modelSelection.model)} ${theme.muted('does not reason, so no blocks will appear either way.')}`,
+            0,
+            0,
+          ),
+        );
+        chatLog.addChild(new Spacer(1));
+        tui.requestRender();
+        break;
+      }
       case 'palette': {
         openCommandPalette();
         break;
