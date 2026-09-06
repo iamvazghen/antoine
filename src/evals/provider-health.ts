@@ -54,10 +54,16 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
   tiingo_eod_prices: { ticker: 'AAPL', start_date: '2026-08-01', end_date: '2026-09-01' },
   tiingo_fundamentals: { ticker: 'AAPL' },
   polygon_stock_snapshot: { ticker: 'AAPL' },
-  eodhd_eod_prices: { ticker: 'AAPL.US' },
+  eodhd_eod_prices: { ticker: 'AAPL.US', start_date: '2026-08-01', end_date: '2026-09-01' },
   eodhd_fundamentals: { ticker: 'AAPL.US' },
   twelvedata_quote: { symbol: 'AAPL' },
   alphavantage_stock_quote: { ticker: 'AAPL' },
+
+  // --- free replacements for the paid gaps
+  yahoo_quote: { ticker: 'VOD.LSE' },
+  yahoo_history: { ticker: '7203.TSE', range: '1mo', interval: '1d' },
+  sec_filings: { ticker: 'AAPL', form: '10-K', limit: 2 },
+  sec_financials: { ticker: 'AAPL', metrics: ['revenue'], years: 3 },
 
   // --- crypto
   coingecko_simple_price: { ids: 'bitcoin', vs_currency: 'usd' },
