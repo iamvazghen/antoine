@@ -32,6 +32,8 @@ export const SUBAGENT_DISALLOWED_TOOLS = new Set<string>(['spawn_subagent', 'ask
  * on approval prompts or side effects.
  */
 const READ_ONLY_TOOLS = [
+  'grade_ticker',
+  'score_history',
   'get_financials',
   'get_market_data',
   'read_filings',
@@ -68,7 +70,7 @@ export const SUBAGENT_TYPES: Record<string, SubagentTypeConfig> = {
   analysis: {
     whenToUse: 'Quantitative financial analysis on specific companies.',
     systemPrompt: `${WORKER_PREAMBLE}\n\nYou are a financial analysis worker. Pull the relevant financials, metrics, and market data, then deliver a focused quantitative analysis with the numbers that support it.`,
-    tools: ['get_financials', 'get_market_data', 'stock_screener', 'read_filings'],
+    tools: ['grade_ticker', 'score_history', 'get_financials', 'get_market_data', 'stock_screener', 'read_filings'],
     maxIterations: 8,
   },
   'devils-advocate': {
@@ -91,7 +93,7 @@ You are a contrarian analyst. The orchestrator has just produced an investment t
 - Cite sources with [N] markers. Be honest when evidence is inconclusive — say so.
 - Do NOT be contrarian for sport. If the thesis holds up, say so clearly. Your job is to be right, not to be cynical.
 `,
-    tools: ['get_financials', 'get_market_data', 'web_search', 'x_search', 'read_filings', 'memory_search', 'memory_get'],
+    tools: ['grade_ticker', 'get_financials', 'get_market_data', 'web_search', 'x_search', 'read_filings', 'memory_search', 'memory_get'],
     maxIterations: 6,
   },
   'macro-overlay': {

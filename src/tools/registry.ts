@@ -42,6 +42,14 @@ import { createAskUserQuestion, ASK_USER_QUESTION_DESCRIPTION } from './ask-user
 import { getAllProviderLeaves } from './finance/providers/index.js';
 import { getAllNewsLeaves, getNewsRouterTool } from './news/index.js';
 import { portfolioView, portfolioAdd, portfolioRemove, portfolioJournal, portfolioSetRisk } from './portfolio/index.js';
+import {
+  gradeTickerTool,
+  GRADE_TICKER_DESCRIPTION,
+  investmentReportTool,
+  INVESTMENT_REPORT_DESCRIPTION,
+  scoreHistoryTool,
+  SCORE_HISTORY_DESCRIPTION,
+} from './scoring.js';
 
 /**
  * A registered tool with its rich description for system prompt injection.
@@ -68,6 +76,27 @@ export interface RegisteredTool {
  */
 export function getToolRegistry(model: string): RegisteredTool[] {
   const tools: RegisteredTool[] = [
+    {
+      name: 'grade_ticker',
+      tool: gradeTickerTool,
+      description: GRADE_TICKER_DESCRIPTION,
+      compactDescription: 'Grade a stock 0-100 on a 1-3y and a 20y+ horizon, with the weighted factor breakdown. Deterministic. The opening move on any single-ticker judgement.',
+      concurrencySafe: true,
+    },
+    {
+      name: 'investment_report',
+      tool: investmentReportTool,
+      description: INVESTMENT_REPORT_DESCRIPTION,
+      compactDescription: 'Grade and rank the whole universe, diff against the last run, review holdings for decay. The periodic review.',
+      concurrencySafe: false,
+    },
+    {
+      name: 'score_history',
+      tool: scoreHistoryTool,
+      description: SCORE_HISTORY_DESCRIPTION,
+      compactDescription: 'Read the score ledger: a ticker grade history, the calibration check, or the universe list.',
+      concurrencySafe: true,
+    },
     {
       name: 'get_financials',
       tool: createGetFinancials(model),
