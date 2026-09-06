@@ -9,7 +9,21 @@ import { callProvider, TTL_FUNDAMENTALS } from '../provider-call.js';
 import { formatToolResult, type SourceRef } from '../../types.js';
 
 const LABEL = 'FMP';
-const BASE_URL = 'https://financialmodelingprep.com/api/v3';
+
+/**
+ * FMP retired the /api/v3 endpoints for accounts created after 2025-08-31; every
+ * call to them now returns "Legacy Endpoint" instead of data, which is what this
+ * provider was doing. /stable is the replacement, and it takes the ticker as a
+ * `symbol` query parameter rather than a path segment.
+ */
+const BASE_URL = 'https://financialmodelingprep.com/stable';
+
+/** The current plan rejects limit > 5 outright, so clamp rather than 400. */
+const MAX_LIMIT = 5;
+
+function clampLimit(limit: number): string {
+  return String(Math.min(limit, MAX_LIMIT));
+}
 
 function apiKey(): string {
   const k = process.env.FMP_API_KEY;
@@ -18,11 +32,11 @@ function apiKey(): string {
 }
 
 async function callFmp(path: string, params: Record<string, string>, title?: string): Promise<string> {
-  const url = new URL(`${BASE_URL}${path}`);
+  const url = new URL(`${BASE_URL}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   url.searchParams.set('apikey', apiKey());
   const result = await callProvider({
-    provider: 'fmp', endpoint: path.slice(1).replace(/\//g, '_'),
+    provider: 'fmp', endpoint: path.replace(/\//g, '_'),
     params, url: url.toString(), ttlMs: TTL_FUNDAMENTALS,
   });
   const sources: SourceRef[] = result.sourceUrls.map((u, i) => ({ id: i + 1, url: u, provider: LABEL, title }));
@@ -36,7 +50,7 @@ const profile = new DynamicStructuredTool({
   name: 'fmp_company_profile',
   description: 'Company profile (price, beta, market cap, sector, CEO) from FMP.',
   schema: z.object({ ticker: z.string() }),
-  func: async ({ ticker }) => callFmp(`/profile/${ticker.toUpperCase()}`, {}, `profile ${ticker.toUpperCase()}`),
+  func: async ({ ticker }) => callFmp('profile', { symbol: ticker.toUpperCase() }, `profile ${ticker.toUpperCase()}`),
 });
 
 const ratios = new DynamicStructuredTool({
@@ -48,14 +62,14 @@ const ratios = new DynamicStructuredTool({
     limit: z.number().int().min(1).max(40).default(5),
   }),
   func: async ({ ticker, period, limit }) =>
-    callFmp(`/ratios/${ticker.toUpperCase()}`, { period, limit: String(limit) }, `ratios ${ticker.toUpperCase()}`),
+    callFmp('ratios', { symbol: ticker.toUpperCase(), period, limit: clampLimit(limit) }, `ratios ${ticker.toUpperCase()}`),
 });
 
 const dcf = new DynamicStructuredTool({
   name: 'fmp_dcf_valuation',
   description: 'DCF intrinsic value estimate from FMP.',
   schema: z.object({ ticker: z.string() }),
-  func: async ({ ticker }) => callFmp(`/discounted-cash-flow/${ticker.toUpperCase()}`, {}, `dcf ${ticker.toUpperCase()}`),
+  func: async ({ ticker }) => callFmp('discounted-cash-flow', { symbol: ticker.toUpperCase() }, `dcf ${ticker.toUpperCase()}`),
 });
 
 const incomeStatement = new DynamicStructuredTool({
@@ -67,7 +81,7 @@ const incomeStatement = new DynamicStructuredTool({
     limit: z.number().int().min(1).max(40).default(5),
   }),
   func: async ({ ticker, period, limit }) =>
-    callFmp(`/income-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) }, `income ${ticker.toUpperCase()}`),
+    callFmp('income-statement', { symbol: ticker.toUpperCase(), period, limit: clampLimit(limit) }, `income ${ticker.toUpperCase()}`),
 });
 
 const balanceSheet = new DynamicStructuredTool({
@@ -79,14 +93,14 @@ const balanceSheet = new DynamicStructuredTool({
     limit: z.number().int().min(1).max(40).default(5),
   }),
   func: async ({ ticker, period, limit }) =>
-    callFmp(`/balance-sheet-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) }, `balance ${ticker.toUpperCase()}`),
+    callFmp('balance-sheet-statement', { symbol: ticker.toUpperCase(), period, limit: clampLimit(limit) }, `balance ${ticker.toUpperCase()}`),
 });
 
 const earningsCalendar = new DynamicStructuredTool({
   name: 'fmp_earnings_calendar',
   description: 'Upcoming earnings calendar (date, ticker, EPS/revenue estimates) from FMP.',
   schema: z.object({ from: z.string().describe('Start YYYY-MM-DD'), to: z.string().describe('End YYYY-MM-DD') }),
-  func: async ({ from, to }) => callFmp('/earning_calendar', { from, to }, `earnings calendar ${from}..${to}`),
+  func: async ({ from, to }) => callFmp('earnings-calendar', { from, to }, `earnings calendar ${from}..${to}`),
 });
 
 const stockScreener = new DynamicStructuredTool({
@@ -110,7 +124,7 @@ const stockScreener = new DynamicStructuredTool({
     for (const [k, v] of Object.entries(input)) {
       if (v !== undefined && v !== null) params[k] = String(v);
     }
-    return callFmp('/stock-screener', params, 'fmp screener');
+    return callFmp('company-screener', params, 'fmp screener');
   },
 });
 
@@ -118,14 +132,14 @@ const earningsSurprises = new DynamicStructuredTool({
   name: 'fmp_earnings_surprises',
   description: 'Historical earnings surprises (actual vs estimated EPS) from FMP.',
   schema: z.object({ ticker: z.string() }),
-  func: async ({ ticker }) => callFmp(`/earnings-surprises/${ticker.toUpperCase()}`, {}, `surprises ${ticker.toUpperCase()}`),
+  func: async ({ ticker }) => callFmp('earnings', { symbol: ticker.toUpperCase() }, `earnings ${ticker.toUpperCase()}`),
 });
 
 const priceTarget = new DynamicStructuredTool({
   name: 'fmp_price_target',
   description: 'Analyst price target consensus (low/avg/high) from FMP.',
   schema: z.object({ ticker: z.string() }),
-  func: async ({ ticker }) => callFmp(`/price-target/${ticker.toUpperCase()}`, {}, `price target ${ticker.toUpperCase()}`),
+  func: async ({ ticker }) => callFmp('price-target-consensus', { symbol: ticker.toUpperCase() }, `price target ${ticker.toUpperCase()}`),
 });
 
 export function getLeaves(): StructuredToolInterface[] | null {
