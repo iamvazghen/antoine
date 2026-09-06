@@ -52,13 +52,14 @@ export class WatchlistComponent extends Box {
 
   private refresh() {
     this.clear();
+
+    // Nothing watched means nothing to show. A bordered box containing only
+    // a header and a hint is chrome with no content, and it appeared on every
+    // startup. The command is documented in /help where it belongs.
+    if (this.tickers.length === 0) return;
+
     this.addChild(new Text(theme.primary('Watchlist'), 0, 0));
     this.addChild(new Spacer(1));
-
-    if (this.tickers.length === 0) {
-      this.addChild(new Text(theme.muted('/watch AAPL NVDA'), 0, 0));
-      return;
-    }
 
     for (const t of this.tickers) {
       const q = this.quotes.get(t);

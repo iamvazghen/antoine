@@ -1,6 +1,5 @@
 import { Container, Spacer, Text } from '@mariozechner/pi-tui';
 import packageJson from '../../package.json';
-import { getModelDisplayName } from '../utils/model.js';
 import { getModelCapabilities } from '../model/capabilities.js';
 import { theme } from '../theme.js';
 
@@ -23,22 +22,17 @@ const LABEL_COL = 9;
  */
 export class IntroComponent extends Container {
   private model: string;
-  private providerName: string | null = null;
+  private providerCount = 0;
 
-  constructor(model: string, providerName?: string) {
+  constructor(model: string, _providerName?: string, providerCount = 0) {
     super();
     this.model = model;
-    this.providerName = providerName ?? null;
+    this.providerCount = providerCount;
     this.build();
   }
 
   setModel(model: string) {
     this.model = model;
-    this.build();
-  }
-
-  setProvider(providerName: string) {
-    this.providerName = providerName;
     this.build();
   }
 
@@ -59,7 +53,12 @@ export class IntroComponent extends Container {
     this.clear();
 
     this.addChild(new Spacer(1));
-    this.addChild(new Text(theme.bold(theme.primary(BANNER)), 0, 0));
+    // Indent to the same gutter as the text below; the banner used to start
+    // hard against column 0 while every other line was inset by two.
+    const banner = BANNER.split('\n')
+      .map((line) => (line ? `  ${line}` : line))
+      .join('\n');
+    this.addChild(new Text(theme.bold(theme.primary(banner)), 0, 0));
     this.addChild(new Spacer(1));
 
     this.addChild(
@@ -72,18 +71,19 @@ export class IntroComponent extends Container {
     this.addChild(new Spacer(1));
 
     const caps = getModelCapabilities(this.model);
-    const modelValue = this.providerName
-      ? `${theme.primaryLight(getModelDisplayName(this.model))} ${theme.muted(`· ${this.providerName}`)}`
-      : theme.primaryLight(getModelDisplayName(this.model));
-    this.row('model', modelValue);
-
-    // Say plainly whether to expect reasoning blocks, rather than leaving the
-    // user to wonder why they do or do not appear.
+    // The model and its thinking badge live in the status bar, which is always
+    // on screen. Repeating them here put the same two facts on three adjacent
+    // lines at startup. What the status bar cannot say is what the badge MEANS,
+    // so that is all this keeps.
     this.row(
       'mode',
       caps.reasoning
-        ? `${theme.accent('thinking')} ${theme.muted('· reasoning shown as it happens')}`
-        : `${theme.muted('direct')} ${theme.muted('· no reasoning pass')}`,
+        ? `${theme.accent('thinking')} ${theme.muted('· its reasoning is shown, labelled, above each answer')}`
+        : `${theme.muted('direct')} ${theme.muted('· no reasoning pass, so no thinking blocks')}`,
+    );
+    this.row(
+      'data',
+      `${theme.primaryLight(String(this.providerCount))} ${theme.muted('providers active')}`,
     );
 
     this.addChild(new Spacer(1));

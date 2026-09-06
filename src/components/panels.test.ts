@@ -1,6 +1,8 @@
 import { HelpPanelComponent } from './help-panel.js';
 import { ThinkingBlockComponent } from './thinking-block.js';
 import { IntroComponent } from './intro.js';
+import { WatchlistComponent } from './watchlist.js';
+import { StatusBarComponent } from './status-bar.js';
 import { SLASH_COMMANDS } from '../commands/index.js';
 import { setActiveTheme } from '../theme.js';
 
@@ -73,5 +75,46 @@ describe('intro header', () => {
       expect(renderedText(help)).toContain('/grade');
     }
     setActiveTheme('emerald');
+  });
+});
+
+describe('startup noise', () => {
+  test('an empty watchlist renders nothing at all', () => {
+    // It used to draw a bordered box with a header and a hint around no data,
+    // on every single startup.
+    const wl = new WatchlistComponent();
+    expect(renderedText(wl).trim()).toBe('');
+  });
+
+  test('a populated watchlist still renders', () => {
+    const wl = new WatchlistComponent();
+    wl.setTickers(['AAPL']);
+    expect(renderedText(wl)).toContain('AAPL');
+  });
+
+  test('the status bar hides zeroed stats before the first turn', () => {
+    const bar = new StatusBarComponent();
+    bar.setProvider('minimax · MiniMax-M2.5');
+    bar.setModel('minimax:MiniMax-M2.5');
+    bar.setStats({ inputTokens: 0, outputTokens: 0, costUsd: 0, iter: 0, maxIter: 20, tokensPerSecond: null });
+    const text = renderedText(bar);
+    expect(text).not.toContain('$0.0000');
+    expect(text).not.toContain('iter 0/20');
+    // The model and its capability badge stay - those are always meaningful.
+    expect(text).toContain('thinking');
+  });
+
+  test('the status bar shows stats once a turn has run', () => {
+    const bar = new StatusBarComponent();
+    bar.setProvider('minimax · MiniMax-M2.5');
+    bar.setStats({ inputTokens: 1200, outputTokens: 340, costUsd: 0.012, iter: 2, maxIter: 20, tokensPerSecond: 41 });
+    const text = renderedText(bar);
+    expect(text).toContain('iter 2/20');
+  });
+
+  test('the intro no longer repeats the model shown in the status bar', () => {
+    const text = renderedText(new IntroComponent('minimax:MiniMax-M2.5', 'MiniMax', 12));
+    expect(text).not.toContain('MiniMax-M2.5');
+    expect(text).toContain('providers active');
   });
 });

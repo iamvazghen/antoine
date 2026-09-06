@@ -72,7 +72,13 @@ export class StatusBarComponent extends Container {
       parts.push(caps.reasoning ? theme.accent(caps.label) : theme.muted(caps.label));
     }
 
-    if (this.stats) {
+    // Suppress the whole stats group until something has actually run:
+    // zeros are noise, and noise next to live numbers makes both harder to read.
+    const hasActivity =
+      this.stats != null &&
+      (this.stats.inputTokens > 0 || this.stats.outputTokens > 0 || this.stats.iter > 0);
+
+    if (this.stats && hasActivity) {
       const { inputTokens, outputTokens, costUsd, iter, maxIter, tokensPerSecond } = this.stats;
       const tokenLine = `${theme.muted('↓')}${formatTokensCompact(inputTokens)} ${theme.muted('↑')}${formatTokensCompact(outputTokens)}`;
       parts.push(theme.muted(tokenLine));

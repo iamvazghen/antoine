@@ -404,6 +404,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
   const intro = new IntroComponent(
     modelSelection.model,
     getProviderById(modelSelection.provider)?.displayName ?? modelSelection.provider,
+    new Set([...getActiveProviderNames(), ...getActiveNewsProviderNames()]).size,
   );
   const errorText = new Text('', 0, 0);
   const workingIndicator = new WorkingIndicatorComponent(tui);
