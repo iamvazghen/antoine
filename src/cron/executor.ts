@@ -6,6 +6,8 @@ import {
   type SuppressionState,
 } from '../gateway/heartbeat/suppression.js';
 import { assertOutboundAllowed, sendMessageWhatsApp } from '../gateway/channels/whatsapp/index.js';
+import { sendMessageTelegram } from '../gateway/channels/telegram/index.js';
+import { loadGatewayConfig, resolveTelegramAccount } from '../gateway/config.js';
 import { resolveSessionStorePath, loadSessionStore, type SessionEntry } from '../gateway/sessions/store.js';
 import { cleanMarkdownForWhatsApp } from '../gateway/utils.js';
 import { getSetting } from '../utils/config.js';
@@ -146,7 +148,7 @@ export async function executeCronJob(
       modelProvider,
       maxIterations: 6,
       isolatedSession: true,
-      channel: 'whatsapp',
+      channel: session.lastChannel ?? 'whatsapp',
     });
   } catch (err) {
     handleJobError(job, store, err, startedAt);
@@ -170,14 +172,9 @@ export async function executeCronJob(
   } else {
     job.state.lastRunStatus = 'ok';
 
-    // Deliver via WhatsApp
-    const cleaned = cleanMarkdownForWhatsApp(suppResult.cleanedText);
-    await sendMessageWhatsApp({
-      to: session.lastTo,
-      body: cleaned,
-      accountId: session.lastAccountId,
-    });
-    debugLog(`[cron] job ${job.id}: delivered to ${session.lastTo}`);
+    // Deliver on whichever channel the session actually came in on.
+    await deliver(session, suppResult.cleanedText);
+    debugLog(`[cron] job ${job.id}: delivered to ${session.lastTo} via ${session.lastChannel ?? 'whatsapp'}`);
 
     // Update suppression state for duplicate detection
     suppState.lastMessageText = suppResult.cleanedText;
@@ -195,6 +192,35 @@ export async function executeCronJob(
   }
 
   scheduleNextRun(job, store);
+}
+
+/**
+ * Send a cron result on the channel the session was last seen on. Previously
+ * this was hardcoded to WhatsApp, so a Telegram user got scheduled jobs that
+ * ran, logged `ok`, and delivered nothing.
+ */
+async function deliver(session: SessionEntry, text: string): Promise<void> {
+  const channel = session.lastChannel ?? 'whatsapp';
+  const to = session.lastTo;
+  const accountId = session.lastAccountId;
+  if (!to || !accountId) {
+    throw new Error('session has no delivery target');
+  }
+
+  if (channel === 'telegram') {
+    const account = resolveTelegramAccount(loadGatewayConfig(), accountId);
+    if (!account?.botToken) {
+      throw new Error(`telegram account ${accountId} has no bot token`);
+    }
+    await sendMessageTelegram({ botToken: account.botToken, chatId: to, text });
+    return;
+  }
+
+  await sendMessageWhatsApp({
+    to,
+    body: cleanMarkdownForWhatsApp(text),
+    accountId,
+  });
 }
 
 function scheduleNextRun(job: CronJob, store: CronStore): void {
