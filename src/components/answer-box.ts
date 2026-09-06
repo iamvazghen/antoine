@@ -23,6 +23,17 @@ export class AnswerBoxComponent extends Container {
     this.body.setText(`${theme.primary('⏺ ')}${normalized}`);
   }
 
+  /**
+   * Append a streaming chunk to the live answer. The Markdown widget is a
+   * fully-rendered tree (not a streaming renderer), so we rebuild on each
+   * chunk. Throttled to ~10fps by the caller to avoid thrash. After the
+   * stream ends, `setText` is called with the final value to normalize.
+   */
+  appendChunk(delta: string) {
+    this.value += delta;
+    this.setText(this.value);
+  }
+
   appendSources(urls: ReadonlyArray<string>) {
     if (urls.length === 0) return;
     this.addChild(new SourceChipsComponent(urls));

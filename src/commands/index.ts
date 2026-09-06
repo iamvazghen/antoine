@@ -20,6 +20,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'watch', description: 'Add tickers to the watchlist: /watch AAPL NVDA MSFT' },
   { name: 'unwatch', description: 'Remove tickers: /unwatch AAPL' },
   { name: 'watchlist', description: 'Show the current watchlist' },
+  { name: 'cache', description: 'Show tool-cache stats, or /cache clear to reset' },
   { name: 'help', description: 'Show keyboard shortcuts and tips' },
 ];
 

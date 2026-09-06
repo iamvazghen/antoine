@@ -148,6 +148,12 @@ export function createSpawnSubagent(model: string): DynamicStructuredTool {
             // (that would flood the parent with progress events).
             streamedChars += ev.charDelta;
             break;
+          case 'answer_chunk':
+            // Partial answer text — count characters for the live token
+            // estimate. Don't surface chunks up to the parent (it gets the
+            // full answer on 'done').
+            streamedChars += ev.delta.length;
+            break;
           case 'done':
             answer = ev.answer;
             usage = ev.tokenUsage;

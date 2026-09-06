@@ -28,22 +28,28 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
+function isPlaceholderKey(value: string | undefined): boolean {
+  if (!value) return true;
+  const trimmed = value.trim();
+  return trimmed === '' || trimmed.startsWith('your-') || trimmed === 'placeholder';
+}
+
 function resolveProvider(preferred: EmbeddingProviderId): ResolvedProvider | null {
-  if (preferred === 'openai' && process.env.OPENAI_API_KEY) {
+  if (preferred === 'openai' && !isPlaceholderKey(process.env.OPENAI_API_KEY)) {
     return 'openai';
   }
-  if (preferred === 'gemini' && process.env.GOOGLE_API_KEY) {
+  if (preferred === 'gemini' && !isPlaceholderKey(process.env.GOOGLE_API_KEY)) {
     return 'gemini';
   }
-  if (preferred === 'ollama') {
+  if (preferred === 'ollama' && process.env.OLLAMA_BASE_URL) {
     return 'ollama';
   }
 
   if (preferred === 'auto') {
-    if (process.env.OPENAI_API_KEY) {
+    if (!isPlaceholderKey(process.env.OPENAI_API_KEY)) {
       return 'openai';
     }
-    if (process.env.GOOGLE_API_KEY) {
+    if (!isPlaceholderKey(process.env.GOOGLE_API_KEY)) {
       return 'gemini';
     }
     if (process.env.OLLAMA_BASE_URL) {

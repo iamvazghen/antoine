@@ -293,6 +293,15 @@ export class ChatLogComponent extends Container {
     this.activeAnswer = null;
   }
 
+  /** Append a streaming chunk to the active answer. Creates a new box if none. */
+  appendAnswerChunk(delta: string) {
+    if (!this.activeAnswer) {
+      this.activeAnswer = new AnswerBoxComponent('');
+      this.addChild(this.activeAnswer);
+    }
+    this.activeAnswer.appendChunk(delta);
+  }
+
   addAnsweredQuestions(answers: QuestionAnswer[]) {
     if (answers.length === 0) {
       return;

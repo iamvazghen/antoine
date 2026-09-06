@@ -782,6 +782,29 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
         tui.requestRender();
         break;
       }
+      case 'cache': {
+        chatLog.addChild(new Spacer(1));
+        const subcommand = (rawQuery.replace(/^\/cache\s*/, '').trim().toLowerCase());
+        if (subcommand === 'clear' || subcommand === 'reset') {
+          const { clearToolCache, getToolCacheStats } = await import('./utils/tool-cache.js');
+          const before = getToolCacheStats();
+          clearToolCache();
+          chatLog.addChild(
+            new Text(theme.success(`⏺ Tool cache cleared (was ${before.size} entries, ${before.totalHits} hits)`), 0, 0),
+          );
+        } else {
+          const { getToolCacheStats } = await import('./utils/tool-cache.js');
+          const stats = getToolCacheStats();
+          chatLog.addChild(
+            new Text(theme.primary(`Tool cache: ${stats.size} / ${stats.maxEntries} entries, ${stats.totalHits} hits`), 0, 0),
+          );
+          chatLog.addChild(
+            new Text(theme.muted('/cache clear — flush all cached tool results (forces fresh network calls).'), 0, 0),
+          );
+        }
+        tui.requestRender();
+        break;
+      }
     }
   };
 

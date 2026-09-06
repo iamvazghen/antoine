@@ -317,20 +317,30 @@ export class AgentRunnerController {
       case 'context_cleared':
       case 'compaction':
       case 'microcompact':
-      case 'queue_drain':
+      case 'queue_drain': {
         this.pushEvent({
           id: `${event.type}-${Date.now()}`,
           event,
           completed: true,
         });
         break;
-      case 'stream_progress':
+      }
+      case 'stream_progress': {
         // Update accumulators without firing onChange — the working indicator
         // pulls turnStats on its own spinner tick. Avoids a per-chunk emitChange
         // storm that stutters input.
         this.streamedCharsValue += event.charDelta;
         this.streamModeValue = event.mode;
         return;
+      }
+      case 'answer_chunk': {
+        // Partial answer text — accumulate for the spinner character count.
+        // The full answer is delivered on `done`; UIs can subscribe to these
+        // chunks to render text streaming.
+        this.streamedCharsValue += event.delta.length;
+        this.streamModeValue = 'responding';
+        return;
+      }
       case 'done': {
         const done = event as DoneEvent;
         if (done.answer) {

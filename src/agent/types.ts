@@ -229,6 +229,21 @@ export interface TokenUsage {
 }
 
 /**
+ * Partial-answer streaming chunk. Emitted by the agent as the LLM streams
+ * response text — gives the UI something to render before the full answer
+ * is ready. UIs can update the answer box character-by-character.
+ *
+ * The `delta` is the substring added since the previous `answer_chunk`. The
+ * final answer is still available in the `done` event for back-compat.
+ */
+export interface AnswerChunkEvent {
+  type: 'answer_chunk';
+  delta: string;
+  /** Total accumulated answer text up to and including this chunk. */
+  accumulated: string;
+}
+
+/**
  * Queued messages were drained and injected into the conversation.
  */
 export interface QueueDrainEvent {
@@ -298,6 +313,7 @@ export type AgentEvent =
   | MemoryRecalledEvent
   | MemoryFlushEvent
   | StreamProgressEvent
+  | AnswerChunkEvent
   | DoneEvent;
 
 /**

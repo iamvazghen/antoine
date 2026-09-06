@@ -3,6 +3,7 @@ import type { ToolCall } from '@langchain/core/messages/tool';
 import { StructuredToolInterface } from '@langchain/core/tools';
 import { createProgressChannel } from '../utils/progress-channel.js';
 import { all } from '../utils/concurrency.js';
+import { getToolCacheEntry, setToolCacheEntry } from '../utils/tool-cache.js';
 import type {
   ApprovalDecision,
   ToolApprovalEvent,
@@ -158,6 +159,25 @@ export class AgentToolExecutor {
 
     const toolStartTime = Date.now();
 
+    // Ponytail: check the process-global tool cache before invoking. When
+    // a subagent (or the parent agent) just called the same tool with the
+    // same args, return the cached result. Per-tool TTL ensures freshness.
+    const cached = getToolCacheEntry(toolName, toolArgs);
+    if (cached) {
+      const duration = 1; // cache hits are essentially instant
+      // Emit a tool_progress so the UI can show "cached" feedback if it wants.
+      yield {
+        type: 'tool_progress',
+        tool: toolName,
+        message: `cached (${Math.round(cached.ageMs / 1000)}s old)`,
+        toolCallId,
+      } as ToolProgressEvent;
+      yield { type: 'tool_end', tool: toolName, args: toolArgs, result: cached.result, duration, toolCallId };
+      ctx.scratchpad.recordToolCall(toolName, toolQuery);
+      ctx.scratchpad.addToolResult(toolName, toolArgs, cached.result);
+      return;
+    }
+
     try {
       const tool = this.toolMap.get(toolName);
       if (!tool) {
@@ -185,6 +205,9 @@ export class AgentToolExecutor {
       const rawResult = await toolPromise;
       const result = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult);
       const duration = Date.now() - toolStartTime;
+
+      // Cache the result for future calls in this process.
+      setToolCacheEntry(toolName, toolArgs, result);
 
       yield { type: 'tool_end', tool: toolName, args: toolArgs, result, duration, toolCallId };
 

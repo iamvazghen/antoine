@@ -29,8 +29,11 @@ const DEFAULT_MODEL = 'minimax:MiniMax-M2.5';
 const TEST_CASES: TestCase[] = [
   // 1. Simple US equity snapshot
   { label: 'AAPL price snapshot', query: "What's the current price and day's change for Apple?", expectAnyOf: ['polygon_stock_snapshot', 'finnhub_quote', 'get_stock_price', 'twelvedata_quote', 'alphavantage_stock_quote'] },
-  // 2. Financial ratios — should prefer FMP per the router preference
-  { label: 'NVDA valuation metrics', query: "Show me NVDA's current P/E, market cap, and revenue growth.", expectAnyOf: ['fmp_ratios', 'get_key_ratios'] },
+  // 2. Financial ratios — should prefer FMP per the router preference. The agent
+  // may either call the meta-tool (get_financials / get_key_ratios) which
+  // wraps the leaves, or call the leaves directly (fmp_ratios). Both are
+  // valid; the meta-tool is the preferred path.
+  { label: 'NVDA valuation metrics', query: "Show me NVDA's current P/E, market cap, and revenue growth.", expectAnyOf: ['fmp_ratios', 'get_key_ratios', 'get_financials'] },
   // 3. Multi-company comparison (router should fan out)
   { label: 'Big Tech revenue comparison', query: 'Compare 2024 annual revenue for AAPL, MSFT, GOOGL, AMZN side by side.', expectAnyOf: ['get_financials', 'fmp_income_statement', 'get_income_statements'] },
   // 4. News search — should hit news_router if active
@@ -66,6 +69,13 @@ function indent(text: string, prefix = '  │ '): string {
 }
 
 async function runOne(test: TestCase): Promise<TestOutcome> {
+  // Isolate this test from prior tests' cache state. The tool cache is
+  // process-global by design (subagent cross-call reuse) but means tests
+  // in the same bun process can leak state. Clear at the start of each
+  // test for reproducibility.
+  const { clearToolCache } = await import('../utils/tool-cache.js');
+  clearToolCache();
+
   const history = new InMemoryChatHistory(DEFAULT_MODEL);
   const t0 = Date.now();
   const toolCalls: string[] = [];
@@ -190,6 +200,12 @@ async function main(): Promise<void> {
   console.log(`Expected-tool match: ${matched}/${total}`);
   console.log(`Total tokens: ${totalTokensUsed.toLocaleString()}`);
   console.log(`Total wall time: ${(totalDuration / 1000).toFixed(1)}s`);
+
+  // Cache is cleared at the start of every test, so by the end it's empty.
+  // Report the final cache state for transparency.
+  const { getToolCacheStats } = await import('../utils/tool-cache.js');
+  const stats = getToolCacheStats();
+  console.log(`Tool cache: ${stats.size} / ${stats.maxEntries} entries (${stats.totalHits} hits across the run)`);
 }
 
 main().catch((err) => {

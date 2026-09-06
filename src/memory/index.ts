@@ -140,9 +140,11 @@ export class MemoryManager {
     if (!this.db || !this.indexer) {
       return [];
     }
-    if (this.indexer.isDirty()) {
-      await this.indexer.sync();
-    }
+    // Skip auto-sync on search — first-time sync on a dirty index blocks
+    // the search call for seconds-to-minutes while the embedding API runs.
+    // The index is rebuilt lazily on commit / manual sync, which keeps
+    // search latency bounded.
+    // (Removed: if (this.indexer.isDirty()) await this.indexer.sync();)
 
     const client = createEmbeddingClient({
       provider: this.config.embeddingProvider,

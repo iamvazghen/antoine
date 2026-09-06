@@ -9,7 +9,7 @@ import { estimateTokens, getAutoCompactThreshold, KEEP_TOOL_USES } from '../util
 import { exceedsSizeCap, persistLargeResult, buildPersistedContent } from '../utils/tool-result-storage.js';
 import { enforceResultBudget } from '../utils/tool-result-budget.js';
 import { formatUserFacingError, isContextOverflowError } from '../utils/errors.js';
-import type { AgentConfig, AgentEvent, CompactionEvent, ContextClearedEvent, MicrocompactEvent, QueueDrainEvent, StreamMode, StreamProgressEvent, TokenUsage } from '../agent/types.js';
+import type { AgentConfig, AgentEvent, AnswerChunkEvent, CompactionEvent, ContextClearedEvent, MicrocompactEvent, QueueDrainEvent, StreamMode, StreamProgressEvent, TokenUsage } from '../agent/types.js';
 import type { MessageQueue } from '../utils/message-queue.js';
 import { compactContext, MAX_CONSECUTIVE_COMPACTION_FAILURES, MIN_TOOL_RESULTS_FOR_COMPACTION } from './compact.js';
 import { microcompactMessages } from './microcompact.js';
@@ -323,7 +323,7 @@ export class Agent {
    */
   private async *callModelWithStreaming(
     messages: BaseMessage[],
-  ): AsyncGenerator<StreamProgressEvent, { response: AIMessage; usage?: TokenUsage }> {
+  ): AsyncGenerator<AgentEvent, { response: AIMessage; usage?: TokenUsage }> {
     try {
       return yield* this.streamAndAccumulate(messages);
     } catch {
@@ -341,10 +341,13 @@ export class Agent {
    */
   private async *streamAndAccumulate(
     messages: BaseMessage[],
-  ): AsyncGenerator<StreamProgressEvent, { response: AIMessage; usage?: TokenUsage }> {
+  ): AsyncGenerator<AgentEvent, { response: AIMessage; usage?: TokenUsage }> {
     yield { type: 'stream_progress', charDelta: 0, mode: 'requesting' };
 
     let accumulated: AIMessageChunk | null = null;
+    // Track the running text content so we can emit incremental answer_chunk
+    // events with the actual delta. Lets UIs render the answer character-by-character.
+    let lastEmittedText = '';
 
     for await (const chunk of streamLlmWithMessages(messages, {
       model: this.model,
@@ -355,6 +358,21 @@ export class Agent {
       const { charDelta, mode } = inspectChunkContent(chunk);
       if (charDelta > 0 || mode !== 'responding') {
         yield { type: 'stream_progress', charDelta, mode };
+      }
+      // Detect plain-text content and emit per-chunk deltas. Skip when the
+      // content is an array of typed parts (e.g. tool-use deltas) so we
+      // don't double-emit structured content as text.
+      if (mode === 'responding' && typeof chunk.content === 'string' && chunk.content.length > 0) {
+        const full = accumulated?.content;
+        if (typeof full === 'string' && full !== lastEmittedText) {
+          const delta = full.length > lastEmittedText.length
+            ? full.slice(lastEmittedText.length)
+            : full;
+          if (delta) {
+            yield { type: 'answer_chunk', delta, accumulated: full };
+          }
+          lastEmittedText = full;
+        }
       }
     }
 
