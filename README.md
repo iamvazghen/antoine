@@ -402,7 +402,27 @@ journalctl --user -u antoine-gateway -f
 `ANTOINE_HOME` is what makes this safe: state resolves to one absolute
 directory regardless of the working directory the service starts in.
 
-### Windows (`antoine` on PATH)
+### A launcher on PATH
+
+Copy `scripts/bin/antoine` (bash) and `scripts/bin/antoine.cmd` (PowerShell/cmd)
+onto your `PATH` and set `ANTOINE_REPO` to the checkout. Both give the same
+subcommands:
+
+```
+antoine                 # interactive UI (needs a real terminal)
+antoine health          # provider health sweep
+antoine test            # test suite
+antoine gateway         # Telegram + cron locally
+antoine logs            # tail the VPS gateway log
+antoine vps restart     # control the VPS service
+antoine pull / push     # sync memory + score ledger with the VPS
+```
+
+Two files rather than one because PowerShell resolves a bare `antoine` to the
+`.cmd` through PATHEXT, while bash only matches an exact filename — without the
+extensionless twin, `antoine` is "command not found" in Git Bash.
+
+### The Windows shim, inline
 
 Drop `antoine.cmd` somewhere on `PATH`:
 
