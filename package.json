@@ -1,7 +1,14 @@
 {
   "name": "antoine-ts",
   "version": "1.1.0",
-  "description": "Antoine - AI agent for deep financial research.",
+  "description": "Antoine - self-hosted financial research agent with deterministic 0-100 investment grading on two horizons.",
+  "license": "MIT",
+  "author": "iamvazghen",
+  "repository": { "type": "git", "url": "git+https://github.com/iamvazghen/antoine.git" },
+  "homepage": "https://github.com/iamvazghen/antoine#readme",
+  "bugs": { "url": "https://github.com/iamvazghen/antoine/issues" },
+  "keywords": ["finance", "investing", "ai-agent", "llm", "stocks", "etf", "valuation", "telegram-bot"],
+  "engines": { "node": ">=20" },
   "type": "module",
   "main": "src/index.tsx",
   "bin": {

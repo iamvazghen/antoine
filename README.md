@@ -1,14 +1,17 @@
 # Antoine
 
-**Antoine** is a self-hosted, terminal-native financial-research agent built for serious investors. It lives in your terminal, your WhatsApp, and your Telegram — and it does the work of a junior analyst: pulling live data across **74 tools**, citing every claim, running a multi-agent debate on every high-conviction trade, and remembering your portfolio between sessions.
+**Antoine** is a self-hosted financial-research agent. It lives in your terminal and your Telegram, and it does the work of a junior analyst: pulling live data across **84 tools**, citing every claim, running a multi-agent debate on high-conviction trades, and remembering your portfolio between sessions.
 
-It defaults to a locally-proxied model (no API key required to start) but is wired to **10 LLM providers** (OpenAI · Anthropic · Google · xAI · DeepSeek · Moonshot · OpenRouter · minimax · FreeLLMAPI · Ollama) so you can pick the right model per query type.
+What separates it from a chatbot with a stock API is the **grading engine**: every company gets a deterministic **0-100 score on two horizons** — 1-3 years and 20+ years — computed in code from a fixed factor set, so the same inputs give the same number in March and in September. Grades are written to a ledger with the price at the time, which turns a stream of opinions into a track record you can check.
+
+Ships configured for **MiniMax M2.5**, and wired to 10 LLM providers (OpenAI · Anthropic · Google · xAI · DeepSeek · Moonshot · OpenRouter · MiniMax · FreeLLMAPI · Ollama) so you can pick the right model per query type.
 
 ---
 
 ## Table of Contents
 
 - [What it does](#what-it-does)
+- [Investment grading](#investment-grading)
 - [Architecture](#architecture)
 - [Tool inventory](#tool-inventory)
 - [Skills](#skills)
@@ -22,6 +25,8 @@ It defaults to a locally-proxied model (no API key required to start) but is wir
 - [Evaluate](#evaluate)
 - [Debug](#debug)
 - [WhatsApp + Telegram gateways](#whatsapp--telegram-gateways)
+- [Deploying as a service](#deploying-as-a-service)
+- [Provider health check](#provider-health-check)
 - [Cost model](#cost-model)
 - [Third-party data attribution + licenses](#third-party-data-attribution--licenses)
 - [License](#license)
@@ -34,12 +39,76 @@ It defaults to a locally-proxied model (no API key required to start) but is wir
 Antoine takes a question like *"is NVDA cheap relative to peers given the AI capex cycle?"* and runs an end-to-end research workflow:
 
 1. **Plans** — picks the right tools (equity quotes? financials? news? filings?) and issues them in parallel where independent.
-2. **Sources** — pulls from **74 financial tools** covering US equities, global equities (LSE, TSE, HK, NSE, …), crypto, FX, commodities, macro (FRED, World Bank, ECB), real estate, SEC filings, news from 4 providers, and on-chain crypto.
+2. **Sources** — pulls from **84 financial tools** covering US equities, global equities across ~66 exchanges, crypto, FX, commodities, macro (FRED, World Bank, ECB, BIS), real estate, SEC filings, news from 4 providers, and on-chain crypto.
 3. **Cross-checks** — when providers disagree, it surfaces both. Every data point carries a freshness stamp (`Polygon · 14:32 UTC`) and a numbered citation.
 4. **Argues** — for any high-conviction trade it spawns a 4-specialist debate (bull / bear / quant / macro) and a judge subagent that synthesizes a structured `Decision · Conviction · Time horizon`.
-5. **Remembers** — your portfolio, risk tolerance, prior trades, and stated rules live in `.antoine/` and are auto-injected into every system prompt.
+5. **Grades** — scores the company 0-100 on both a 1-3 year and a 20+ year horizon from a fixed, weighted factor set, and records the grade so later runs report what *changed*.
+6. **Remembers** — your portfolio, risk tolerance, prior trades, and stated rules live in `.antoine/` and are auto-injected into every system prompt.
 
 The output is **opinionated, source-cited, falsifiable** — it leads with the answer, attaches citations to every claim, and includes bear-case risks for any recommendation. The agent is **explicitly permitted to disagree with the user's priors** and to call out weak theses.
+
+---
+
+## Investment grading
+
+`grade_ticker` returns two scores and the full factor breakdown behind them. The
+arithmetic is in `src/scoring/factors.ts` and runs in code, never in the model —
+a grade is only useful if it is reproducible.
+
+**Short horizon (1-3 years)** asks *will this re-rate?*
+
+| Factor | Weight |
+|---|---|
+| Valuation vs its own history | 18 |
+| Revenue growth (TTM YoY) | 12 |
+| EPS growth (TTM YoY) | 12 |
+| Balance-sheet safety | 12 |
+| Growth-adjusted price (PEG) | 10 |
+| Margin direction vs 5y average | 10 |
+| 12-month price momentum | 10 |
+| Relative strength vs S&P 500 | 8 |
+| Current return on equity | 8 |
+
+**Long horizon (20+ years)** asks *will this still compound?*
+
+| Factor | Weight |
+|---|---|
+| Return on invested capital, through the cycle | 16 |
+| Operating-margin durability | 12 |
+| Balance-sheet survivability | 12 |
+| Free-cash-flow conversion | 10 |
+| Reinvestment and compounding runway | 10 |
+| Behaviour through past crises | 10 |
+| Consistency of returns on capital | 8 |
+| Capital allocation | 8 |
+| Valuation vs its own history | 8 |
+| Length of the public record | 6 |
+
+Each horizon's weights sum to 100 and are **renormalised over the factors that
+actually had data**, so a missing input costs `coverage` rather than silently
+scoring zero. Below 60% coverage the grade is thin and says so.
+
+Sanity check on real data: AAPL long 71 (mean ROIC 34.6% over 20y), MSFT 84,
+KO 60, Ford 24 (payout 475%, FCF margin 6.1%).
+
+```bash
+# one company, both horizons
+grade_ticker { ticker: "MSFT" }
+
+# the whole universe, ranked, diffed against last run, holdings reviewed
+investment_report { horizon: "long", top_n: 10 }
+
+# did the high grades actually outperform?
+score_history { action: "calibration", horizon: "long" }
+```
+
+Grades append to `<antoine>/scores/<TICKER>.jsonl` with the price at grade time.
+That ledger is what makes the periodic review a **diff** instead of a fresh
+opinion, and what lets `calibration` eventually say whether the scoring works.
+
+**Horizon note:** fundamental grading is US-listed only on the free data tiers.
+A cross-listed ticker resolves to its US line automatically (`SAP.DE` → `SAP`)
+and the result says so; one without a US line names the ADR to use instead.
 
 ---
 
@@ -61,7 +130,7 @@ The output is **opinionated, source-cited, falsifiable** — it leads with the a
    └────┬────┘         └───────────┘
         │
    ┌────▼───────────────────────────────────────┐
-   │  74 tools                                  │
+   │  84 tools                                  │
    │   • Meta-tools (router)                    │
    │   • Leaf tools (per-provider)              │
    │   • Skills (multi-step workflows)          │
@@ -82,13 +151,13 @@ Key design choices:
 - **Single-pass tool execution per turn** — the agent loop calls multiple tools in parallel when independent (via `Promise.all`), then merges results with numbered citations.
 - **Per-provider disk cache** — `callProvider({ provider, endpoint, params, url, ttlMs })` keys by provider + endpoint + sorted params. Reduces API quota burn for repeat queries.
 - **Provider fallback chains** — `withProviderFallback([Polygon, Finnhub, FMP, …])` for the meta-tools. Polygon rate-limits you? The next provider picks up.
-- **Multi-region normalization** — non-US tickers use `TICKER.EXCHANGE` notation (`VOD.LSE`, `7203.TSE`, `RELIANCE.NSE`). Prices are tagged with local currency (GBp, JPY, INR).
+- **Multi-region normalization** — non-US tickers use `TICKER.EXCHANGE` notation (`VOD.LSE`, `SAP.XETRA`, `PETR4.SA`, `NPN.JSE`). Prices are tagged with local currency, including the sub-unit venues that quote in pence (`GBp`) and cents (`ZAc`). The exchange table is generated from the provider's own list and verified ticker-by-ticker, not hand-written.
 
 ---
 
 ## Tool inventory
 
-74 tools, all env-gated. With zero env keys set, only the system tools (memory, filesystem, browser, scheduling, subagents, skills) are available.
+84 tools, all env-gated. With zero env keys set, only the system tools (memory, filesystem, browser, scheduling, subagents, skills) are available.
 
 ### Core meta-tools (always available)
 
@@ -284,6 +353,99 @@ bun run gateway          # start both gateways
 ```
 
 Messages you send to yourself over WhatsApp are processed by Antoine and replied to in the same chat. Telegram uses Bot API long-polling. Both channels use the WhatsApp / Telegram profile (no headers, no tables).
+
+The gateway process also runs the **cron scheduler**. Scheduled reviews only fire
+while it is alive, which is the reason to run it as a service rather than in a
+terminal.
+
+---
+
+## Deploying as a service
+
+### Linux (systemd)
+
+```bash
+git clone https://github.com/iamvazghen/antoine.git ~/antoine && cd ~/antoine
+npm install
+cp env.example .env && $EDITOR .env       # keys
+mkdir -p ~/.antoine                        # state: memory, portfolio, scores, cron
+```
+
+`~/.config/systemd/user/antoine-gateway.service`:
+
+```ini
+[Unit]
+Description=Antoine gateway (Telegram + cron)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/antoine
+Environment=ANTOINE_HOME=%h/.antoine
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+EnvironmentFile=%h/antoine/.env
+ExecStart=/usr/bin/npx tsx src/gateway/index.ts run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now antoine-gateway
+loginctl enable-linger $USER      # survive logout / reboot
+journalctl --user -u antoine-gateway -f
+```
+
+`ANTOINE_HOME` is what makes this safe: state resolves to one absolute
+directory regardless of the working directory the service starts in.
+
+### Windows (`antoine` on PATH)
+
+Drop `antoine.cmd` somewhere on `PATH`:
+
+```bat
+@echo off
+setlocal
+if not defined ANTOINE_REPO set "ANTOINE_REPO=C:\path\to\antoine"
+if not defined ANTOINE_HOME set "ANTOINE_HOME=%ANTOINE_REPO%\.antoine"
+pushd "%ANTOINE_REPO%"
+if /i "%~1"=="gateway" (shift & call bun run gateway & goto :done)
+if /i "%~1"=="health"  (call bun run health & goto :done)
+call bun run src/index.tsx %*
+:done
+set "EXITCODE=%ERRORLEVEL%"
+popd
+exit /b %EXITCODE%
+```
+
+Then from any directory:
+
+```powershell
+antoine                 # interactive CLI
+antoine health          # provider health sweep
+antoine gateway         # Telegram + cron locally
+```
+
+---
+
+## Provider health check
+
+Free API tiers rot quietly: an endpoint is retired, a plan is downgraded, a
+series ID changes. Unit tests do not catch it — they assert on shapes, not on
+live responses.
+
+```bash
+bun run health
+```
+
+Calls every network-backed tool once with a realistic argument set and
+classifies each as **ok**, **plan** (your subscription, not the code) or
+**dead** (broken, fix it), with one retry so a throttled response is not
+reported as a failure. Run it after touching a provider, or when the agent
+starts claiming data is unavailable.
 
 ---
 

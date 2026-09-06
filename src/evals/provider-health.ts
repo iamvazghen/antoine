@@ -79,6 +79,9 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
  */
 const PLAN_LIMIT = /insufficient credits|restricted endpoint|payment required|402|403|legacy endpoint|premium|subscription/i;
 
+/** Transient throttling. Free tiers here throttle hard when the whole sweep runs back to back. */
+const RATE_LIMIT = /429|too many requests|rate limit|limit reached|daily limit/i;
+
 type Status = 'ok' | 'plan' | 'broken' | 'unchecked';
 
 async function check(
@@ -119,7 +122,18 @@ async function main(): Promise<void> {
       results.push({ name: entry.name, status: 'unchecked', detail: 'no fixture' });
       continue;
     }
-    const r = await check(entry.name, entry.tool as unknown as { invoke: (a: unknown) => Promise<unknown> }, args);
+    const tool = entry.tool as unknown as { invoke: (a: unknown) => Promise<unknown> };
+    let r = await check(entry.name, tool, args);
+    // One retry before calling anything dead: a single throttled response during
+    // a back-to-back sweep is not a broken tool, and a false DEAD is exactly the
+    // noise that makes a health check get ignored.
+    if (r.status === 'broken') {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      r = await check(entry.name, tool, args);
+      if (r.status === 'broken' && RATE_LIMIT.test(r.detail)) {
+        r = { status: 'plan' as Status, detail: `rate-limited: ${r.detail}` };
+      }
+    }
     results.push({ name: entry.name, status: r.status, detail: r.detail });
     const mark = { ok: 'OK  ', plan: 'PLAN', broken: 'DEAD', unchecked: '--  ' }[r.status];
     console.log(`${mark} ${entry.name.padEnd(28)} ${r.detail}`);
