@@ -14,6 +14,9 @@ import {
   GET_GLOBAL_STOCK_DESCRIPTION,
   getCommodity,
   GET_COMMODITY_DESCRIPTION,
+  getFredSeries,
+  getFredSeriesMulti,
+  FRED_DESCRIPTION,
 } from './finance/index.js';
 import { exaSearch, perplexitySearch, tavilySearch, langSearch, WEB_SEARCH_DESCRIPTION, xSearchTool, X_SEARCH_DESCRIPTION } from './search/index.js';
 import { createWebSearchTool, type WebSearchProvider } from './search/web-search.js';
@@ -297,6 +300,17 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       tool: getCatalystCalendar,
       description: GET_CATALYST_CALENDAR_DESCRIPTION,
       compactDescription: 'Upcoming earnings + catalyst calendar (FMP > Finnhub fallback). Use this whenever you cite a price target.',
+      concurrencySafe: true,
+    });
+  }
+
+  // Multi-series FRED fetch — single-call macro dashboard for "rates + yields + inflation".
+  if (process.env.FRED_API_KEY) {
+    tools.push({
+      name: 'get_fred_series_multi',
+      tool: getFredSeriesMulti,
+      description: FRED_DESCRIPTION + ' (2-9 series in one call; use for macro dashboards).',
+      compactDescription: 'Multi-series FRED macro fetch (rates + yields + inflation in one call).',
       concurrencySafe: true,
     });
   }

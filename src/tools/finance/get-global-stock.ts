@@ -80,8 +80,38 @@ export const getGlobalStock = new DynamicStructuredTool({
     }
 
     // EODHD returns an array of EOD bars; the latest entry is the current close.
+    // EODHD also returns a bare object like {"error": "..."} on bad input — detect that.
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'error' in (raw as Record<string, unknown>)) {
+      const errMsg = String((raw as { error: unknown }).error);
+      return formatToolResult(
+        {
+          error: `EODHD returned an error for ${symbol}.${region.exchange}: ${errMsg}. ` +
+            `Try a different exchange suffix or use the bare eodhd_eod_prices tool with the exact TICKER.EXCHANGE format EODHD expects.`,
+          ticker: input.ticker.toUpperCase(),
+          exchange: region.exchange,
+          provider: 'eodhd',
+        },
+        [],
+      );
+    }
+
     const bars = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
-    const latest = bars.length > 0 ? bars[bars.length - 1] : null;
+    if (bars.length === 0) {
+      return formatToolResult(
+        {
+          error: `EODHD returned no EOD bars for ${symbol}.${region.exchange}. ` +
+            `This usually means the symbol/exchange combination is wrong. ` +
+            `For Tokyo stocks, try ${symbol}.TSE (or ${symbol}.T for ETFs/REITs). For LSE, try ${symbol}.LSE. ` +
+            `Use the bare eodhd_eod_prices tool to probe with explicit TICKER.EXCHANGE notation.`,
+          ticker: input.ticker.toUpperCase(),
+          exchange: region.exchange,
+          provider: 'eodhd',
+          hint: `Common alternative suffixes: ${symbol}.TSE ${symbol}.LSE ${symbol}.PA ${symbol}.DE ${symbol}.HK ${symbol}.NSE ${symbol}.T`,
+        },
+        [],
+      );
+    }
+    const latest = bars[bars.length - 1];
     const prev = bars.length > 1 ? bars[bars.length - 2] : null;
 
     const data = {

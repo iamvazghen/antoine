@@ -16,6 +16,9 @@ export {
   FX_RATES_DESCRIPTION,
   getEconomicIndicators,
   ECONOMIC_INDICATORS_DESCRIPTION,
+  getFredSeries,
+  getFredSeriesMulti,
+  FRED_DESCRIPTION,
 } from './markets.js';
 export { getCatalystCalendar, GET_CATALYST_CALENDAR_DESCRIPTION } from './get-catalyst-calendar.js';
 export { getGlobalStock, GET_GLOBAL_STOCK_DESCRIPTION } from './get-global-stock.js';

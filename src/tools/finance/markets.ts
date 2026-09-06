@@ -277,3 +277,69 @@ export const getFredSeries = new DynamicStructuredTool({
     );
   },
 });
+
+const FredMultiInputSchema = z.object({
+  series: z
+    .array(
+      z.enum([
+        'fed_funds', 'cpi', 'cpi_yoy', 'treasury_10y', 'treasury_2y',
+        'unemployment', 'gdp', 'pce', 'm2',
+      ]),
+    )
+    .min(2)
+    .max(9)
+    .describe('Two or more FRED series to fetch in one call (e.g., ["fed_funds", "treasury_10y"]).'),
+  start_date: z.string().optional().describe('Start date (YYYY-MM-DD). Defaults to 5 years ago.'),
+  end_date: z.string().optional().describe('End date (YYYY-MM-DD). Defaults to today.'),
+});
+
+/**
+ * Multi-series FRED fetch. Avoids the N-call fan-out when the user wants
+ * a macro dashboard (rates + yields + inflation + unemployment all at once).
+ * Fetches each series in parallel via Promise.all and returns a unified
+ * { [series_name]: { label, units, observations } } payload.
+ */
+export const getFredSeriesMulti = new DynamicStructuredTool({
+  name: 'get_fred_series_multi',
+  description: 'Fetches 2-9 FRED series in parallel and returns them as one combined payload. Use this for macro dashboards (rates + yields + inflation + unemployment at once).',
+  schema: FredMultiInputSchema,
+  func: async (input) => {
+    const apiKey = process.env.FRED_API_KEY;
+    if (!apiKey) {
+      throw new Error('[FRED API] FRED_API_KEY is not set');
+    }
+
+    const today = new Date();
+    const endYear = input.end_date ? input.end_date.slice(0, 4) : String(today.getFullYear());
+    const startYear = input.start_date ? input.start_date.slice(0, 4) : String(today.getFullYear() - 5);
+
+    const fetchOne = async (key: string) => {
+      const meta = FRED_SERIES[key];
+      const url = new URL('https://api.stlouisfed.org/fred/series/observations');
+      url.searchParams.set('series_id', meta.code);
+      url.searchParams.set('api_key', apiKey);
+      url.searchParams.set('file_type', 'json');
+      url.searchParams.set('observation_start', `${startYear}-01-01`);
+      url.searchParams.set('observation_end', `${endYear}-12-31`);
+
+      const raw = (await fetchJson(url.toString(), 'FRED API')) as {
+        observations?: Array<{ date: string; value: string }>;
+      };
+      const obs = (raw.observations ?? [])
+        .filter((o) => o.value !== '.')
+        .map((o) => ({ date: o.date, value: Number(o.value) }));
+      return { key, url: url.toString(), series: { label: meta.label, units: meta.units, observations: obs } };
+    };
+
+    const results = await Promise.all(input.series.map(fetchOne));
+    const sourceUrls = results.map((r) => r.url);
+    const combined: Record<string, unknown> = {};
+    for (const r of results) {
+      combined[r.key] = r.series;
+    }
+    return formatToolResult(
+      { from: `${startYear}-01-01`, to: `${endYear}-12-31`, series: combined },
+      sourceUrls,
+    );
+  },
+});
