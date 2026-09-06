@@ -1,3 +1,4 @@
+import { markdownToTelegramHtml, chunkHtml, stripHtml } from './format.js';
 import { logger } from '../../../utils/logger.js';
 
 const API_ROOT = 'https://api.telegram.org';
@@ -65,20 +66,6 @@ export async function getBotInfo(botToken: string, signal?: AbortSignal): Promis
 }
 
 /** Telegram caps text messages at 4096 characters; split on boundaries to be safe. */
-function chunkText(text: string, limit = 4000): string[] {
-  if (text.length <= limit) return [text];
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > limit) {
-    let cut = remaining.lastIndexOf('\n', limit);
-    if (cut < limit * 0.5) cut = remaining.lastIndexOf(' ', limit);
-    if (cut < limit * 0.5) cut = limit;
-    chunks.push(remaining.slice(0, cut));
-    remaining = remaining.slice(cut).replace(/^\s+/, '');
-  }
-  if (remaining) chunks.push(remaining);
-  return chunks;
-}
 
 export async function sendMessageTelegram(params: {
   botToken: string;
@@ -86,7 +73,10 @@ export async function sendMessageTelegram(params: {
   text: string;
   signal?: AbortSignal;
 }): Promise<void> {
-  const chunks = chunkText(params.text);
+  // The agent writes markdown. Without parse_mode Telegram renders none of it,
+  // so `**MSFT**` arrived as literal asterisks and tables as walls of pipes.
+  // Convert to Telegram HTML and declare it.
+  const chunks = chunkHtml(markdownToTelegramHtml(params.text));
   for (const chunk of chunks) {
     try {
       await callTelegram(
@@ -95,14 +85,35 @@ export async function sendMessageTelegram(params: {
         {
           chat_id: params.chatId,
           text: chunk,
+          parse_mode: 'HTML',
           disable_web_page_preview: true,
         },
         params.signal,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[Telegram] sendMessage failed for chat ${params.chatId}: ${message}`);
-      throw error;
+      // Telegram rejects an entire message over one malformed tag. Losing the
+      // answer is far worse than losing the styling, so retry as plain text.
+      logger.warn(
+        `[Telegram] HTML send failed for chat ${params.chatId}, retrying as plain text: ${message}`,
+      );
+      try {
+        await callTelegram(
+          params.botToken,
+          'sendMessage',
+          {
+            chat_id: params.chatId,
+            text: stripHtml(chunk),
+            disable_web_page_preview: true,
+          },
+          params.signal,
+        );
+      } catch (fallbackError) {
+        const detail =
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        logger.error(`[Telegram] sendMessage failed for chat ${params.chatId}: ${detail}`);
+        throw fallbackError;
+      }
     }
   }
 }

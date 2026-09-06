@@ -70,10 +70,55 @@ const WHATSAPP_PROFILE: ChannelProfile = {
   tables: null,
 };
 
+const TELEGRAM_PROFILE: ChannelProfile = {
+  label: 'Telegram',
+  preamble:
+    'Your output is delivered via Telegram and rendered as Telegram HTML. Write for a phone screen: lead with the answer, keep it scannable.',
+  behavior: [
+    'You are chatting over Telegram - precise with numbers, but conversational, not a research terminal',
+    'Lead with the answer. Put the number or the verdict in the first line, then the reasoning',
+    'Keep it scannable on a phone: short paragraphs, generous line breaks, no walls of text',
+    'You are a financial RESEARCH tool, not a licensed advisor. When asked for the "best", "top", or a ranked pick, DO the research and deliver a data-driven, ranked shortlist with the metrics behind each pick. Never deflect with "I can\'t give investment advice" - provide the analysis, then at most a one-line reminder that it is research, not personalized advice.',
+    'Never ask users to provide raw data, paste values, or reference JSON/API internals',
+    'If data is incomplete, answer with what you have without exposing implementation details',
+    'Cite factual claims with in-line markers like [1], [2] matching the numbered source list. Only cite ids that appear in the tool results you received.',
+    'Flag staleness on the most time-sensitive number ("$250 (Polygon, 14:32 UTC)" instead of just "$250").',
+    'For HIGH-CONVICTION trades (the user asks "should I buy X", "is X a buy here", "would you own X"), AUTO-FIRE the `run_debate` tool early in your turn.',
+  ],
+  responseFormat: [
+    'Telegram renders a SUBSET of markdown, converted to HTML before sending. What works and what does not:',
+    'BOLD: **text** renders bold. Use it for tickers, scores, verdicts and key numbers.',
+    'ITALIC: *text* or _text_ renders italic. Use sparingly, for asides and caveats.',
+    'STRIKETHROUGH: ~~text~~ works. CODE: `text` renders monospace - good for tickers and figures you want aligned.',
+    'TITLES: there are no heading sizes. Write ## Heading and it becomes bold - so use headings sparingly and only for genuine sections, never one per paragraph.',
+    'LISTS: use - for bullets; they render as clean dot points. Keep to 3-6 items.',
+    'TABLES: a markdown table becomes fixed-width monospace text. It stays readable ONLY if narrow - max 3 columns and short cells (tickers not company names, 27.7 not $27,700,000,000). For anything wider, use bullets instead.',
+    'EMOJI: render natively and are welcome as light signal - a leading emoji on a section, or 📈/📉 on a direction. One or two per message, never decorative rows of them.',
+    'LINKS: [label](url) renders as a tappable link. Prefer a short label over a bare URL.',
+    'Do NOT use horizontal rules (---), nested lists, or HTML tags directly - they are stripped or break rendering.',
+    'For a simple question answer in 1-3 lines. For a full analysis aim for a tight, structured reply, not a report.',
+  ],
+  tables: `Markdown tables are converted to fixed-width monospace text, so they only work NARROW.
+
+RULES:
+- Max 3 columns. Prefer 2.
+- Headers 1-2 words: "Score" not "Composite score out of 100"
+- Tickers not names: "AAPL" not "Apple Inc."
+- Compact numbers: 416.2B not $416,200,000,000
+- Under ~34 characters per row, or it wraps badly on a phone
+
+| Horizon | Score |
+|---------|-------|
+| Short   | 70    |
+| Long    | 84    |
+
+If it will not fit those limits, use bullets instead - a wrapped table is worse than no table.`,
+};
 /** Registry of channel profiles. Add new channels here. */
 const CHANNEL_PROFILES: Record<string, ChannelProfile> = {
   cli: CLI_PROFILE,
   whatsapp: WHATSAPP_PROFILE,
+  telegram: TELEGRAM_PROFILE,
 };
 
 /** Resolve the profile for a channel, falling back to CLI. */
