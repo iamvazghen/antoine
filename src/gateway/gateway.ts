@@ -352,12 +352,17 @@ export async function startGateway(params: { configPath?: string } = {}): Promis
   // Report what actually came up. startAccount() swallows a channel failure
   // into an unprinted lastError, so a gateway with a dead Telegram channel
   // logged exactly the same line as a healthy one.
-  for (const [id, snap] of Object.entries(manager.getSnapshot())) {
-    logChannelStatus('whatsapp', id, snap);
-  }
-  for (const [id, snap] of Object.entries(telegramManager.getSnapshot())) {
-    logChannelStatus('telegram', id, snap);
-  }
+  // Reported after a short settle: the connection callbacks land a moment
+  // after startAll() returns, so reporting immediately always says
+  // "not yet connected" even on a perfectly healthy start.
+  setTimeout(() => {
+    for (const [id, snap] of Object.entries(manager.getSnapshot())) {
+      logChannelStatus('whatsapp', id, snap);
+    }
+    for (const [id, snap] of Object.entries(telegramManager.getSnapshot())) {
+      logChannelStatus('telegram', id, snap);
+    }
+  }, 8000).unref?.();
 
   ensureHeartbeatCronJob(params.configPath);
   const cron = startCronRunner({ configPath: params.configPath });
