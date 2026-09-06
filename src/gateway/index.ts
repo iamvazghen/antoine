@@ -1,4 +1,9 @@
 #!/usr/bin/env tsx
+// Load .env first: the gateway is a separate entrypoint from the CLI, and it
+// only picked up environment variables when some transitive import happened to
+// pull in a module that loaded dotenv as a side effect. Run as a service, that
+// is the difference between every API key being present and none of them.
+import 'dotenv/config';
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import util from 'node:util';
