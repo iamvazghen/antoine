@@ -64,3 +64,43 @@ export async function fetchJson(
     throw new Error(`[${label}] request failed: ${detail}`);
   });
 }
+
+/**
+ * Fetch a CSV endpoint and parse it into row objects keyed by the header line.
+ * Deliberately minimal: the official statistics feeds that need this publish
+ * plain comma-separated numbers with no quoting or embedded commas.
+ */
+export async function fetchCsvRows(
+  url: string,
+  label: string,
+  init: RequestInit = {},
+): Promise<Array<Record<string, string>>> {
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers: { Accept: 'text/csv', ...init.headers } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`[${label}] network error: ${message}`);
+    throw new Error(`[${label}] request failed: ${message}`);
+  }
+
+  if (!response.ok) {
+    const detail = `${response.status} ${response.statusText}`;
+    logger.error(`[${label}] error: ${detail}`);
+    throw new Error(`[${label}] request failed: ${detail}`);
+  }
+
+  const text = await response.text();
+  const lines = text
+    .trim()
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',').map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(',').map((c) => c.trim());
+    return Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? '']));
+  });
+}

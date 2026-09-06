@@ -18,7 +18,6 @@ import { getLeaves as fred } from './fred.js';
 import { getLeaves as rentcast } from './rentcast.js';
 import { getLeaves as rapidapiRealtor } from './rapidapi-realtor.js';
 import { getLeaves as ecb } from './ecb.js';
-import { getLeaves as boe } from './boe.js';
 import { getLeaves as bis } from './bis.js';
 import { getLeaves as blockchain } from './blockchain.js';
 
@@ -37,7 +36,6 @@ const PROVIDERS: Array<{ name: string; leaves: StructuredToolInterface[] | null 
   { name: 'Realtor via RapidAPI', leaves: rapidapiRealtor() },
   // Free, no key required
   { name: 'ECB', leaves: ecb() },
-  { name: 'Bank of England', leaves: boe() },
   { name: 'BIS', leaves: bis() },
   { name: 'Blockchain.com (on-chain)', leaves: blockchain() },
 ];

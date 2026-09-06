@@ -32,7 +32,11 @@ const news = new DynamicStructuredTool({
     url.searchParams.set('limit', String(limit));
     if (symbols) url.searchParams.set('symbols', symbols);
     if (query) url.searchParams.set('search', query);
-    const publishedAfter = new Date(Date.now() - days_back * 24 * 60 * 60 * 1000).toISOString();
+    // Marketaux rejects a full ISO timestamp with seconds/milliseconds (400).
+    // It accepts YYYY-MM-DDTHH:MM, so trim to minute precision.
+    const publishedAfter = new Date(Date.now() - days_back * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 16);
     url.searchParams.set('published_after', publishedAfter);
     const result = await callProvider({
       provider: 'marketaux', endpoint: 'news_all',

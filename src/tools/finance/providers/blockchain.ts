@@ -70,8 +70,8 @@ const networkStats = new DynamicStructuredTool({
       callBc('/q/hashrate', TTL_INTRADAY_QUOTE, 'BTC hash rate TH/s'),
       callBc('/q/getdifficulty', TTL_INTRADAY_QUOTE, 'BTC difficulty'),
       callBc('/q/getblockcount', TTL_INTRADAY_QUOTE, 'BTC block height'),
-      callBc('/q/getnbtotalbtc', TTL_INTRADAY_QUOTE, 'BTC sent 24h'),
-      callBc('/q/btcc', TTL_INTRADAY_QUOTE, 'BTC tx count 24h'),
+      callBc('/q/24hrbtcsent', TTL_INTRADAY_QUOTE, 'BTC sent 24h'),
+      callBc('/q/24hrtransactioncount', TTL_INTRADAY_QUOTE, 'BTC tx count 24h'),
     ]);
     return formatToolResult({
       hash_rate_th_per_sec: JSON.parse(hashrate).data,

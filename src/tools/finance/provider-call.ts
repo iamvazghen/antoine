@@ -9,7 +9,7 @@
  * so the agent can reason about data provenance without each provider rolling
  * its own.
  */
-import { fetchJson, TTL_24H, TTL_15M, TTL_1H } from './utils.js';
+import { fetchJson, fetchCsvRows, TTL_24H, TTL_15M, TTL_1H } from './utils.js';
 import { readCache, writeCache } from '../../utils/cache.js';
 
 export interface ProviderResult {
@@ -42,6 +42,12 @@ export interface ProviderCallOptions {
   body?: Record<string, unknown>;
   /** Optional extra headers (e.g. auth tokens). */
   headers?: Record<string, string>;
+  /**
+   * Response format. Some official statistics endpoints (the Bank of England's
+   * database, for one) only publish CSV; 'csv' parses it into row objects so the
+   * agent still receives JSON.
+   */
+  responseType?: 'json' | 'csv';
 }
 
 /** Sensible TTLs by data class. */
@@ -77,7 +83,10 @@ export async function callProvider(opts: ProviderCallOptions): Promise<ProviderR
     ...(opts.body ? { body: JSON.stringify(opts.body) } : {}),
   };
 
-  const raw = await fetchJson(opts.url, opts.provider, init);
+  const raw =
+    opts.responseType === 'csv'
+      ? { rows: await fetchCsvRows(opts.url, opts.provider, init) }
+      : await fetchJson(opts.url, opts.provider, init);
   const data =
     raw && typeof raw === 'object' && !Array.isArray(raw)
       ? (raw as Record<string, unknown>)

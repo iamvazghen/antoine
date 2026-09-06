@@ -11,14 +11,17 @@ import { callProvider, TTL_INTRADAY_QUOTE } from '../provider-call.js';
 import { formatToolResult, type SourceRef } from '../../types.js';
 
 const LABEL = 'BIS';
-const BASE_URL = 'https://stats.bis.org/api/v1/data';
+const BASE_URL = 'https://stats.bis.org/api/v2/data/dataflow/BIS';
 
 async function callBis(series: string, ttlMs: number, title?: string): Promise<string> {
-  const url = `${BASE_URL}/${series}?format=jsondata&lastNObservations=120`;
+  // v1 was retired and answers 406 to everything; v2 additionally requires an
+  // explicit SDMX Accept header or it also returns 406.
+  const url = `${BASE_URL}/${series}?lastNObservations=120`;
   const result = await callProvider({
     provider: 'bis', endpoint: series.replace(/[/.]/g, '_'),
     params: { series },
     url, ttlMs,
+    headers: { Accept: 'application/vnd.sdmx.data+json;version=1.0.0' },
   });
   const sources: SourceRef[] = result.sourceUrls.map((u, i) => ({ id: i + 1, url: u, provider: 'bis', title }));
   return JSON.stringify({
@@ -37,7 +40,7 @@ const centralBankRate = new DynamicStructuredTool({
       .describe('ISO-2 country code (US=Fed, GB=BoE, JP=BoJ, CA=BoC, AU=RBA, NZ=RBNZ, CH=SNB, SE=Riksbank, NO=Norges, DK=Denmark, EA=EurArea/ECB).'),
   }),
   func: async ({ country }) =>
-    callBis(`CBS/POLICY_RATE/${country}.B.R`, TTL_INTRADAY_QUOTE, `BIS ${country} policy rate`),
+    callBis(`WS_CBPOL/1.0/D.${country}`, TTL_INTRADAY_QUOTE, `BIS ${country} policy rate`),
 });
 
 export function getLeaves(): StructuredToolInterface[] | null {

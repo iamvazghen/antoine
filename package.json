@@ -15,6 +15,7 @@
     "gateway:telegram": "tsx src/gateway/index.ts telegram",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "health": "bun run src/evals/provider-health.ts",
     "test:watch": "bun test --watch",
     "postinstall": "playwright install chromium"
   },

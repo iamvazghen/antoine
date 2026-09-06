@@ -26,9 +26,9 @@ const BASE_URL = 'https://data-api.ecb.europa.eu/service/data';
 
 /** Curated list of useful series. Agent can pass any other series ID too. */
 const KNOWN_SERIES: Record<string, string> = {
-  'ecb.deposit': 'FM.B.U2.EUR.4F.KR.DF.LEV',
-  'ecb.refi': 'FM.B.U2.EUR.4F.KR.MF.LEV',
-  'ecb.marginal': 'FM.B.U2.EUR.4F.KR.ML.LEV',
+  'ecb.deposit': 'FM.B.U2.EUR.4F.KR.DFR.LEV',
+  'ecb.refi': 'FM.B.U2.EUR.4F.KR.MRR_FR.LEV',
+  'ecb.marginal': 'FM.B.U2.EUR.4F.KR.MLFR.LEV',
   'ecb.hicp.yoy': 'ICP.M.U2.N.000000.4.ANR',
   'fx.eurusd': 'EXR.D.USD.EUR.SP00.A',
   'fx.eurgbp': 'EXR.D.GBP.EUR.SP00.A',
@@ -38,7 +38,11 @@ const KNOWN_SERIES: Record<string, string> = {
 
 async function callEcb(seriesKey: string, ttlMs: number, title?: string): Promise<string> {
   const series = KNOWN_SERIES[seriesKey] ?? seriesKey;
-  const url = `${BASE_URL}/${series}?format=jsondata&lastNObservations=60&detail=dataonly`;
+  // SDMX wants the dataflow as its own path segment: EXR/D.USD.EUR.SP00.A, not
+  // EXR.D.USD.EUR.SP00.A. Every ECB call was returning 400 without this split.
+  const firstDot = series.indexOf('.');
+  const path = firstDot === -1 ? series : `${series.slice(0, firstDot)}/${series.slice(firstDot + 1)}`;
+  const url = `${BASE_URL}/${path}?format=jsondata&lastNObservations=60&detail=dataonly`;
   const result = await callProvider({
     provider: 'ecb', endpoint: series.replace(/[/.]/g, '_'),
     params: { series: seriesKey },
