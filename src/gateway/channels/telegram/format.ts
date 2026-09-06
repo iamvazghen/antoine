@@ -170,3 +170,23 @@ export function stripHtml(html: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
 }
+
+/**
+ * Wrap a thinking model's reasoning as a collapsed, clearly-labelled block.
+ *
+ * Telegram's expandable blockquote is exactly right here: the thinking is
+ * present and auditable but folded away, so it cannot be mistaken for the
+ * answer and does not bury it. Non-thinking models produce no reasoning, so no
+ * block is emitted at all rather than an empty one.
+ */
+export function renderThinkingBlock(reasoning: string): string {
+  const body = reasoning.trim();
+  if (!body) return '';
+  // Reasoning is prose, not markdown - escape it and keep the line breaks.
+  const escaped = body
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<blockquote expandable><b>Thinking</b>
+${escaped}</blockquote>`;
+}

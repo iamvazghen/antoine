@@ -162,6 +162,10 @@ function renderEvent(
 ) {
   const event = display.event;
 
+  if (event.type === 'reasoning') {
+    chatLog.addReasoning(event.content, event.model);
+    return;
+  }
   if (event.type === 'thinking') {
     const message = event.message.trim();
     if (message) {
@@ -448,6 +452,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)) {
       tokensPerSecond: currentItem?.tokensPerSecond ?? null,
     };
     statusBar.setProvider(providerLabel);
+    statusBar.setModel(modelSelection.model);
     statusBar.setStats(stats);
   };
   refreshStatusBar();

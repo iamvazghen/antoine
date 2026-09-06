@@ -131,6 +131,8 @@ export const theme = {
   border: fg('border'),
   dim: (text: string) => chalk.dim(text),
   bold: (text: string) => chalk.bold(text),
+  italic: (text: string) => chalk.italic(text),
+  underline: (text: string) => chalk.underline(text),
 };
 
 export const markdownTheme: MarkdownTheme = {

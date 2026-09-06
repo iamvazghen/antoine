@@ -1,4 +1,4 @@
-import { stripReasoning } from './strip-reasoning.js';
+import { stripReasoning, extractReasoning } from './strip-reasoning.js';
 
 describe('stripReasoning', () => {
   test('removes a closed think block', () => {
@@ -41,5 +41,38 @@ describe('stripReasoning', () => {
 
   test('does not choke on empty input', () => {
     expect(stripReasoning('')).toBe('');
+  });
+});
+
+describe('extractReasoning', () => {
+  test('returns the reasoning as well as the answer', () => {
+    const { answer, reasoning } = extractReasoning('<think>weighing the ROIC trend</think>MSFT: 84');
+    expect(answer).toBe('MSFT: 84');
+    expect(reasoning).toBe('weighing the ROIC trend');
+  });
+
+  test('joins multiple thinking blocks', () => {
+    const { answer, reasoning } = extractReasoning('<think>a</think>First.<think>b</think>Second.');
+    expect(answer).toBe('First.Second.');
+    expect(reasoning).toBe('a\n\nb');
+  });
+
+  test('captures the stray-closing-tag shape MiniMax produces', () => {
+    const { answer, reasoning } = extractReasoning(
+      'The user wants a grade. Let me check.\n</think>\n**MSFT** 84',
+    );
+    expect(answer).toBe('**MSFT** 84');
+    expect(reasoning).toContain('Let me check');
+  });
+
+  test('a non-thinking model yields no reasoning', () => {
+    const { answer, reasoning } = extractReasoning('MSFT scores 84 long.');
+    expect(answer).toBe('MSFT scores 84 long.');
+    expect(reasoning).toBe('');
+  });
+
+  test('keeps a truncated thought as the answer rather than blanking the message', () => {
+    const { answer } = extractReasoning('<think>I was cut off mid');
+    expect(answer).toContain('cut off');
   });
 });

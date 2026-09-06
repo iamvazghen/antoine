@@ -250,6 +250,16 @@ export class AgentRunnerController {
           completed: true,
         });
         break;
+      case 'reasoning':
+        // A thinking model's reasoning pass. Rendered as its own labelled
+        // block so it reads as thinking, not as the answer.
+        this.workingStateValue = { status: 'thinking' };
+        this.pushEvent({
+          id: `reasoning-${Date.now()}`,
+          event,
+          completed: true,
+        });
+        break;
       case 'tool_start': {
         const toolId = event.toolCallId ?? `tool-${event.tool}-${Date.now()}`;
         this.workingStateValue = { status: 'tool', toolName: event.tool };

@@ -1,4 +1,9 @@
-import { markdownToTelegramHtml, chunkHtml, stripHtml } from './format.js';
+import {
+  markdownToTelegramHtml,
+  chunkHtml,
+  stripHtml,
+  renderThinkingBlock,
+} from './format.js';
 import { logger } from '../../../utils/logger.js';
 
 const API_ROOT = 'https://api.telegram.org';
@@ -71,12 +76,18 @@ export async function sendMessageTelegram(params: {
   botToken: string;
   chatId: string | number;
   text: string;
+  /** Thinking-model reasoning, shown collapsed above the answer. */
+  reasoning?: string;
   signal?: AbortSignal;
 }): Promise<void> {
   // The agent writes markdown. Without parse_mode Telegram renders none of it,
   // so `**MSFT**` arrived as literal asterisks and tables as walls of pipes.
   // Convert to Telegram HTML and declare it.
-  const chunks = chunkHtml(markdownToTelegramHtml(params.text));
+  const thinking = renderThinkingBlock(params.reasoning ?? '');
+  const body = markdownToTelegramHtml(params.text);
+  const chunks = chunkHtml(thinking ? `${thinking}
+
+${body}` : body);
   for (const chunk of chunks) {
     try {
       await callTelegram(

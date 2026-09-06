@@ -21,7 +21,8 @@ export type TelegramInboundMessage = {
   /** Send a typing indicator to the originating chat. */
   sendTyping: () => Promise<void>;
   /** Reply to the originating chat. */
-  reply: (text: string) => Promise<void>;
+  /** `reasoning` is rendered as a collapsed Thinking block above the answer. */
+  reply: (text: string, reasoning?: string) => Promise<void>;
 };
 
 export type TelegramStatus = {

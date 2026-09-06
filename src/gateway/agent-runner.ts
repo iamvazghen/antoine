@@ -56,6 +56,16 @@ export function enqueueForSession(
   });
 }
 
+/**
+ * A completed agent turn. `reasoning` is non-empty only for thinking models,
+ * so a surface can render a labelled thinking block without having to guess
+ * whether the model produces one.
+ */
+export interface AgentReply {
+  answer: string;
+  reasoning: string;
+}
+
 export type AgentRunRequest = {
   sessionKey: string;
   query: string;
@@ -71,10 +81,11 @@ export type AgentRunRequest = {
   groupContext?: GroupContext;
 };
 
-export async function runAgentForMessage(req: AgentRunRequest): Promise<string> {
+export async function runAgentForMessage(req: AgentRunRequest): Promise<AgentReply> {
   const isolated = req.isolatedSession ?? false;
   const session = isolated ? null : getSession(req.sessionKey, req.model);
   let finalAnswer = '';
+  let finalReasoning = '';
 
   const run = async () => {
     if (session) {
@@ -97,6 +108,7 @@ export async function runAgentForMessage(req: AgentRunRequest): Promise<string> 
       await req.onEvent?.(event);
       if (event.type === 'done') {
         finalAnswer = event.answer;
+        finalReasoning = event.reasoning ?? '';
       }
     }
 
@@ -121,6 +133,7 @@ export async function runAgentForMessage(req: AgentRunRequest): Promise<string> 
         await req.onEvent?.(event);
         if (event.type === 'done') {
           finalAnswer = event.answer;
+          finalReasoning = event.reasoning ?? '';
         }
       }
     }
@@ -146,5 +159,5 @@ export async function runAgentForMessage(req: AgentRunRequest): Promise<string> 
   } else {
     await run();
   }
-  return finalAnswer;
+  return { answer: finalAnswer, reasoning: finalReasoning };
 }

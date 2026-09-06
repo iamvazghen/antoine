@@ -4,7 +4,8 @@ import { callLlmWithMessages, streamLlmWithMessages } from '../model/llm.js';
 import { getTools, getToolConcurrencyMap } from '../tools/registry.js';
 import { buildSystemPrompt, loadSoulDocument, loadRulesDocument } from './prompts.js';
 import { extractTextContent, hasToolCalls } from '../utils/ai-message.js';
-import { stripReasoning } from '../utils/strip-reasoning.js';
+import { extractReasoning } from '../utils/strip-reasoning.js';
+import { markReasoningObserved } from '../model/capabilities.js';
 import { InMemoryChatHistory } from '../utils/in-memory-chat-history.js';
 import { estimateTokens, getAutoCompactThreshold, KEEP_TOOL_USES } from '../utils/tokens.js';
 import { exceedsSizeCap, persistLargeResult, buildPersistedContent } from '../utils/tool-result-storage.js';
@@ -214,7 +215,14 @@ export class Agent {
 
       // No tool calls = final answer
       if (!hasToolCalls(response)) {
-        yield* this.handleDirectResponse(stripReasoning(responseText ?? ''), ctx);
+        const split = extractReasoning(responseText ?? '');
+        if (split.reasoning) {
+          // What actually arrived is the ground truth about this model.
+          markReasoningObserved(this.model);
+          yield { type: 'reasoning', content: split.reasoning, model: this.model };
+        }
+        ctx.reasoning = split.reasoning;
+        yield* this.handleDirectResponse(split.answer, ctx);
         return;
       }
 
@@ -294,7 +302,14 @@ export class Agent {
         signal: this.signal,
       });
       ctx.tokenCounter.add(usage);
-      synthesizedAnswer = stripReasoning(extractTextContent(response as AIMessage) ?? '');
+      {
+        const split = extractReasoning(extractTextContent(response as AIMessage) ?? '');
+        if (split.reasoning) {
+          markReasoningObserved(this.model);
+          ctx.reasoning = split.reasoning;
+        }
+        synthesizedAnswer = split.answer;
+      }
     } catch {
       // Fall through to the generic message below.
     }
@@ -307,6 +322,7 @@ export class Agent {
         `I reached the research step limit (${this.maxIterations}) before fully converging. ` +
           'Here is what I gathered above — ask me to continue and I can go deeper.',
       toolCalls: ctx.scratchpad.getToolCallRecords(),
+      reasoning: ctx.reasoning,
       iterations: ctx.iteration,
       totalTime,
       tokenUsage: ctx.tokenCounter.getUsage(),
@@ -504,6 +520,7 @@ export class Agent {
       type: 'done',
       answer: responseText,
       toolCalls: ctx.scratchpad.getToolCallRecords(),
+      reasoning: ctx.reasoning,
       iterations: ctx.iteration,
       totalTime,
       tokenUsage: ctx.tokenCounter.getUsage(),

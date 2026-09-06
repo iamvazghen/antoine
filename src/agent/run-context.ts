@@ -17,6 +17,12 @@ export interface RunContext {
    * anchor token estimates on real data.
    */
   lastApiInputTokens: number;
+  /**
+   * Reasoning produced this turn by a thinking model, kept so the final
+   * done event can carry it to surfaces that render after the fact (the
+   * Telegram gateway) rather than live (the TUI).
+   */
+  reasoning: string;
 }
 
 export function createRunContext(query: string): RunContext {
@@ -27,5 +33,6 @@ export function createRunContext(query: string): RunContext {
     startTime: Date.now(),
     iteration: 0,
     lastApiInputTokens: 0,
+    reasoning: '',
   };
 }

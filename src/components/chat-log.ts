@@ -4,6 +4,7 @@ import type { QuestionAnswer } from '../tools/ask-user-question/types.js';
 import { theme } from '../theme.js';
 import { AnswerBoxComponent } from './answer-box.js';
 import { ToolEventComponent } from './tool-event.js';
+import { ThinkingBlockComponent } from './thinking-block.js';
 import { SubagentGroupComponent } from './subagent-group.js';
 import { UserQueryComponent } from './user-query.js';
 import { SourceChipsComponent } from './source-chips.js';
@@ -162,6 +163,12 @@ export class ChatLogComponent extends Container {
     this.activeAnswer = null;
     this.lastToolName = null;
     this.lastToolComponent = null;
+  }
+
+  /** Reasoning from a thinking model, visually separated from the answer. */
+  addReasoning(content: string, model?: string) {
+    if (!content.trim()) return;
+    this.addChild(new ThinkingBlockComponent(content, model));
   }
 
   addQuery(query: string) {

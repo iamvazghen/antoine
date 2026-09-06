@@ -97,6 +97,19 @@ export interface ThinkingEvent {
 }
 
 /**
+ * A thinking model's reasoning pass, kept separate from the answer so the UI
+ * can label it as thinking rather than letting it masquerade as the response.
+ * Only emitted by models that actually reason; see model/capabilities.ts.
+ */
+export interface ReasoningEvent {
+  type: 'reasoning';
+  /** The model's own words. */
+  content: string;
+  /** Model id that produced it, for display.  */
+  model: string;
+}
+
+/**
  * Tool execution started
  */
 export interface ToolStartEvent {
@@ -292,6 +305,8 @@ export interface DoneEvent {
   totalTime: number;
   tokenUsage?: TokenUsage;
   tokensPerSecond?: number;
+  /** Reasoning produced for this turn, when the model is a thinking model. */
+  reasoning?: string;
 }
 
 /**
@@ -299,6 +314,7 @@ export interface DoneEvent {
  */
 export type AgentEvent =
   | ThinkingEvent
+  | ReasoningEvent
   | ToolStartEvent
   | ToolProgressEvent
   | ToolEndEvent

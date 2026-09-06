@@ -142,7 +142,7 @@ export async function executeCronJob(
   // 5. Run agent
   let answer: string;
   try {
-    answer = await runAgentForMessage({
+    answer = (await runAgentForMessage({
       sessionKey: `cron:${job.id}`,
       query,
       model,
@@ -150,7 +150,7 @@ export async function executeCronJob(
       maxIterations: 6,
       isolatedSession: true,
       channel: session.lastChannel ?? 'whatsapp',
-    });
+    })).answer;
   } catch (err) {
     handleJobError(job, store, err, startedAt);
     return;

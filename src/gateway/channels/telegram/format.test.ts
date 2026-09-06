@@ -1,4 +1,4 @@
-import { markdownToTelegramHtml, chunkHtml, stripHtml } from './format.js';
+import { markdownToTelegramHtml, chunkHtml, stripHtml, renderThinkingBlock } from './format.js';
 
 describe('markdownToTelegramHtml', () => {
   test('converts bold and italic', () => {
@@ -92,5 +92,24 @@ describe('chunkHtml', () => {
 describe('stripHtml', () => {
   test('recovers readable plain text for the fallback send', () => {
     expect(stripHtml('<b>MSFT</b> P/E &lt; 30')).toBe('MSFT P/E < 30');
+  });
+});
+
+describe('renderThinkingBlock', () => {
+  test('wraps reasoning in a collapsed, labelled blockquote', () => {
+    const out = renderThinkingBlock('Weighing the ROIC trend.');
+    expect(out).toContain('<blockquote expandable>');
+    expect(out).toContain('<b>Thinking</b>');
+    expect(out).toContain('Weighing the ROIC trend.');
+  });
+
+  test('a non-thinking model produces no block at all', () => {
+    // Not an empty blockquote — nothing.
+    expect(renderThinkingBlock('')).toBe('');
+    expect(renderThinkingBlock('   ')).toBe('');
+  });
+
+  test('escapes markup so reasoning cannot break the message', () => {
+    expect(renderThinkingBlock('P/E < 20 & rising')).toContain('P/E &lt; 20 &amp; rising');
   });
 });

@@ -11,6 +11,7 @@ import { Container, Text, TruncatedText } from '@mariozechner/pi-tui';
 import { theme } from '../theme.js';
 import { formatTokensCompact } from '../utils/format.js';
 import { formatUsd } from '../utils/cost.js';
+import { getModelCapabilities } from '../model/capabilities.js';
 
 export interface StatusStats {
   inputTokens: number;
@@ -24,6 +25,7 @@ export interface StatusStats {
 export class StatusBarComponent extends Container {
   private readonly summaryText: Text;
   private providerLabel = '';
+  private modelId = '';
   private stats: StatusStats | null = null;
   private lastRendered = '';
 
@@ -38,13 +40,23 @@ export class StatusBarComponent extends Container {
     this.refresh();
   }
 
+  /**
+   * The model in use, so the bar can show whether it is a thinking model.
+   * Knowing this up front matters: it tells the user whether to expect
+   * reasoning blocks at all, rather than wondering why they never appear.
+   */
+  setModel(model: string) {
+    this.modelId = model;
+    this.refresh();
+  }
+
   setStats(stats: StatusStats | null) {
     this.stats = stats;
     this.refresh();
   }
 
   private refresh() {
-    if (!this.providerLabel && !this.stats) {
+    if (!this.providerLabel && !this.stats && !this.modelId) {
       this.summaryText.setText('');
       this.lastRendered = '';
       return;
@@ -52,6 +64,13 @@ export class StatusBarComponent extends Container {
 
     const parts: string[] = [];
     if (this.providerLabel) parts.push(theme.primary(this.providerLabel));
+
+    if (this.modelId) {
+      const caps = getModelCapabilities(this.modelId);
+      // Dim for a plain model, accented for a thinking one - the badge is
+      // meant to be readable at a glance, not to compete with the numbers.
+      parts.push(caps.reasoning ? theme.accent(caps.label) : theme.muted(caps.label));
+    }
 
     if (this.stats) {
       const { inputTokens, outputTokens, costUsd, iter, maxIter, tokensPerSecond } = this.stats;

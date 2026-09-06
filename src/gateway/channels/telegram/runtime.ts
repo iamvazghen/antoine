@@ -174,7 +174,8 @@ export async function monitorTelegramChannel(params: MonitorTelegramParams): Pro
         timestamp: message.date ? message.date * 1000 : Date.now(),
         mentionsBot,
         sendTyping: () => sendTypingTelegram({ botToken, chatId: chat.id }),
-        reply: (text: string) => sendMessageTelegram({ botToken, chatId: chat.id, text }),
+        reply: (text: string, reasoning?: string) =>
+          sendMessageTelegram({ botToken, chatId: chat.id, text, reasoning }),
       };
 
       try {

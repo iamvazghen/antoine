@@ -172,7 +172,7 @@ async function handleInbound(cfg: GatewayConfig, inbound: WhatsAppInboundMessage
 
     debugLog(`[gateway] running agent for session=${route.sessionKey}`);
     const startedAt = Date.now();
-    const answer = await runAgentForMessage({
+    const reply = await runAgentForMessage({
       sessionKey: route.sessionKey,
       query,
       model,
@@ -180,6 +180,7 @@ async function handleInbound(cfg: GatewayConfig, inbound: WhatsAppInboundMessage
       channel: 'whatsapp',
       groupContext,
     });
+    const answer = reply.answer;
     const durationMs = Date.now() - startedAt;
     debugLog(`[gateway] agent answer length=${answer.length}`);
 
@@ -282,19 +283,21 @@ async function handleTelegramInbound(
 
     debugLog(`[telegram] running agent for session=${route.sessionKey}`);
     const startedAt = Date.now();
-    const answer = await runAgentForMessage({
+    const reply = await runAgentForMessage({
       sessionKey: route.sessionKey,
       query,
       model,
       modelProvider,
       channel: 'telegram',
     });
+    const answer = reply.answer;
+    const reasoning = reply.reasoning;
     const durationMs = Date.now() - startedAt;
 
     stopTypingLoop();
 
     if (answer.trim()) {
-      await inbound.reply(answer.trim());
+      await inbound.reply(answer.trim(), reasoning);
       console.log(`Sent telegram reply (${answer.length} chars, ${durationMs}ms)`);
     } else {
       console.log(`Agent returned empty response (${durationMs}ms)`);
