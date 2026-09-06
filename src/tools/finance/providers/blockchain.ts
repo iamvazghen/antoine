@@ -42,18 +42,21 @@ const supply = new DynamicStructuredTool({
   description: 'Bitcoin circulating + total supply + market cap from Blockchain.com (free, no key).',
   schema: z.object({}),
   func: async () => {
-    // Three parallel calls + one market-cap call; cache aggressively.
-    const [total, circ, cap] = await Promise.all([
+    // /q/circulating does not exist and 404s, which took the whole tool down.
+    // blockchain.info reports mined supply as /q/totalbc, in satoshi; for
+    // Bitcoin mined supply and circulating supply are the same number, so
+    // there is nothing else to fetch.
+    const [total, cap] = await Promise.all([
       callBc('/q/totalbc', TTL_INTRADAY_QUOTE, 'BTC total supply'),
-      callBc('/q/circulating', TTL_INTRADAY_QUOTE, 'BTC circulating'),
       callBc('/q/marketcap', TTL_INTRADAY_QUOTE, 'BTC market cap USD'),
     ]);
-    const totalData = JSON.parse(total).data;
-    const circData = JSON.parse(circ).data;
+    const totalSatoshi = Number(JSON.parse(total).data?.value ?? JSON.parse(total).data);
     const capData = JSON.parse(cap).data;
+    const btc = Number.isFinite(totalSatoshi) ? totalSatoshi / 1e8 : null;
     return formatToolResult({
-      total_supply_btc: totalData,
-      circulating_supply_btc: circData,
+      total_supply_btc: btc,
+      circulating_supply_btc: btc,
+      max_supply_btc: 21_000_000,
       market_cap_usd: capData,
       as_of: new Date().toISOString(),
       source: 'blockchain.com',

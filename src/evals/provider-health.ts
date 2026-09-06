@@ -22,6 +22,11 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
   // --- grading engine
   grade_ticker: { ticker: 'AAPL', record: false },
   score_history: { action: 'universe' },
+  screen_universe: {
+    filters: [{ metric: 'roe', operator: 'gt', value: 10 }],
+    tickers: ['AAPL', 'MSFT'],
+    limit: 5,
+  },
 
   // --- meta tools (financialdatasets.ai backed)
   get_financials: { query: 'AAPL revenue last year' },
@@ -65,6 +70,43 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
   sec_filings: { ticker: 'AAPL', form: '10-K', limit: 2 },
   sec_financials: { ticker: 'AAPL', metrics: ['revenue'], years: 3 },
 
+  // --- remaining provider leaves
+  alphavantage_stock_time_series: { ticker: 'AAPL', outputsize: 'compact' },
+  alphavantage_fx_rate: { from_currency: 'EUR', to_currency: 'USD' },
+  alphavantage_crypto_rating: { symbol: 'BTC', market: 'USD' },
+  alphavantage_commodity: { commodity: 'WTI' },
+  polygon_stock_aggregates: {
+    ticker: 'AAPL',
+    resolution: 'day',
+    start_date: '2026-08-01',
+    end_date: '2026-09-01',
+  },
+  polygon_forex_snapshot: { pair: 'EUR/USD' },
+  finnhub_sentiment: { ticker: 'AAPL' },
+  finnhub_earnings_calendar: { from: '2026-09-01', to: '2026-09-30', symbol: 'AAPL' },
+  fmp_earnings_calendar: { from: '2026-09-01', to: '2026-09-15' },
+  fmp_earnings_surprises: { ticker: 'AAPL' },
+  twelvedata_time_series: { symbol: 'AAPL', interval: '1day', outputsize: 5 },
+  twelvedata_fx_rate: { pair: 'EUR/USD' },
+  coingecko_markets: { vs_currency: 'usd', limit: 3 },
+  coingecko_global_metrics: {},
+  cmc_listings: { limit: 3, convert: 'USD' },
+  cmc_global_metrics: { convert: 'USD' },
+  btc_supply: {},
+  get_commodity: { commodity: 'oil' },
+  rentcast_rent_estimate: { address: '5500 Grand Lake Dr, San Antonio, TX 78244', bedrooms: 3, bathrooms: 2 },
+  rentcast_value_estimate: { address: '5500 Grand Lake Dr, San Antonio, TX 78244' },
+  realtor_properties_for_sale: { city: 'Austin', state_code: 'TX', limit: 3 },
+
+  // --- meta tools and non-provider surfaces that are still safe to call
+  read_filings: { query: 'AAPL latest 10-K risk factors' },
+  stock_screener: { query: 'US large caps with P/E below 15' },
+  x_search: { command: 'search', query: 'NVDA earnings' },
+  web_fetch: { url: 'https://example.com', prompt: 'What is this page?' },
+  memory_search: { query: 'retirement' },
+  memory_get: { path: 'MEMORY.md' },
+  portfolio_view: {},
+
   // --- crypto
   coingecko_simple_price: { ids: 'bitcoin', vs_currency: 'usd' },
   cmc_quotes: { symbol: 'BTC', convert: 'USD' },
@@ -79,6 +121,52 @@ const FIXTURES: Record<string, Record<string, unknown>> = {
 };
 
 /**
+ * The free tool to reach for when a paid one is unavailable.
+ *
+ * A health check that only says "this is behind your plan" leaves the reader
+ * to work out what to do about it. Every entry here was verified working, so
+ * a PLAN line is a redirection rather than a dead end.
+ */
+const SUBSTITUTES: Record<string, string> = {
+  get_financials: 'sec_financials (US, XBRL from EDGAR) + fmp_income_statement / tiingo_fundamentals',
+  get_market_data: 'yahoo_quote (global) + finnhub_quote (US)',
+  read_filings: 'sec_filings, then web_fetch the document URL',
+  polygon_stock_snapshot: 'finnhub_quote or yahoo_quote',
+  polygon_stock_aggregates: 'yahoo_history or tiingo_eod_prices',
+  polygon_forex_snapshot: 'get_fx_rates (ECB, keyless)',
+  finnhub_sentiment: 'marketaux_news — carries a per-entity sentiment_score',
+  fmp_stock_screener: 'screen_universe — free, over your configured universe',
+  stock_screener: 'screen_universe',
+  eodhd_fundamentals: 'sec_financials (US) or tiingo_fundamentals',
+  eodhd_eod_prices: 'yahoo_history',
+  rentcast_rent_estimate: 'no free equivalent — real-estate data is peripheral to equity research',
+  rentcast_value_estimate: 'no free equivalent',
+  realtor_properties_for_sale: 'no free equivalent',
+};
+/**
+ * Tools deliberately outside the sweep, with the reason. Without this an
+ * unchecked tool is indistinguishable from an untested one, and the summary
+ * quietly under-reports what is actually unknown.
+ */
+const EXCLUDED: Record<string, string> = {
+  investment_report: 'grades the whole universe - minutes of runtime, hundreds of calls',
+  run_debate: 'spawns five agents; a health sweep should not cost that',
+  spawn_subagent: 'spawns an agent; same reason',
+  ask_user_question: 'blocks for interactive input',
+  browser: 'drives a real browser; too heavy for a sweep',
+  skill: 'dispatcher, not a data source',
+  heartbeat: 'writes monitoring state',
+  cron: 'creates and mutates scheduled jobs',
+  write_file: 'mutates the filesystem',
+  edit_file: 'mutates the filesystem',
+  read_file: 'needs a path that exists on the caller machine',
+  memory_update: 'mutates stored memory',
+  portfolio_add: 'mutates the portfolio',
+  portfolio_remove: 'mutates the portfolio',
+  portfolio_journal: 'mutates the portfolio',
+  portfolio_set_risk: 'mutates the portfolio',
+};
+/**
  * Provider errors that mean "your plan", not "your code". A rate limit is
  * neither — re-run before believing a single failure, the free tiers here throttle
  * quickly when the whole sweep runs back to back.
@@ -88,7 +176,14 @@ const PLAN_LIMIT = /insufficient credits|restricted endpoint|payment required|40
 /** Transient throttling. Free tiers here throttle hard when the whole sweep runs back to back. */
 const RATE_LIMIT = /429|too many requests|rate limit|limit reached|daily limit/i;
 
-type Status = 'ok' | 'plan' | 'broken' | 'unchecked';
+/**
+ * Failures inside the LLM planning step of a meta-tool. The data path may be
+ * perfectly healthy; the model was slow, overloaded, or returned an error page.
+ * Reporting these as DEAD points the reader at the wrong subsystem.
+ */
+const LLM_PLANNING = /exceeded \d+s timeout|Failed to plan|Failed to build screening|JSON Parse error|Unrecognized token/i;
+
+type Status = 'ok' | 'plan' | 'broken' | 'skipped' | 'unchecked';
 
 async function check(
   name: string,
@@ -125,7 +220,13 @@ async function main(): Promise<void> {
   for (const entry of registry) {
     const args = FIXTURES[entry.name];
     if (!args) {
-      results.push({ name: entry.name, status: 'unchecked', detail: 'no fixture' });
+      const reason = EXCLUDED[entry.name];
+      results.push({
+        name: entry.name,
+        status: reason ? 'skipped' : 'unchecked',
+        detail: reason ?? 'NO FIXTURE - this tool is untested',
+      });
+      if (!reason) console.log(`--   ${entry.name.padEnd(28)} NO FIXTURE - untested`);
       continue;
     }
     const tool = entry.tool as unknown as { invoke: (a: unknown) => Promise<unknown> };
@@ -136,21 +237,29 @@ async function main(): Promise<void> {
     if (r.status === 'broken') {
       await new Promise((resolve) => setTimeout(resolve, 2500));
       r = await check(entry.name, tool, args);
-      if (r.status === 'broken' && RATE_LIMIT.test(r.detail)) {
+      if (r.status === 'broken' && LLM_PLANNING.test(r.detail)) {
+        r = { status: 'plan' as Status, detail: `LLM planning step failed: ${r.detail}` };
+      } else if (r.status === 'broken' && RATE_LIMIT.test(r.detail)) {
         r = { status: 'plan' as Status, detail: `rate-limited: ${r.detail}` };
       }
     }
     results.push({ name: entry.name, status: r.status, detail: r.detail });
-    const mark = { ok: 'OK  ', plan: 'PLAN', broken: 'DEAD', unchecked: '--  ' }[r.status];
+    const mark = { ok: 'OK  ', plan: 'PLAN', broken: 'DEAD', skipped: 'skip', unchecked: '--  ' }[r.status];
     console.log(`${mark} ${entry.name.padEnd(28)} ${r.detail}`);
   }
 
   const by = (s: Status) => results.filter((r) => r.status === s);
   console.log('\n--- summary');
   console.log(`ok:        ${by('ok').length}`);
-  console.log(`plan:      ${by('plan').length}  ${by('plan').map((r) => r.name).join(' ')}`);
+  const planned = by('plan');
+  console.log(`plan:      ${planned.length}`);
+  for (const r of planned) {
+    const substitute = SUBSTITUTES[r.name] ?? 'no free equivalent identified';
+    console.log(`             ${r.name.padEnd(28)} use instead: ${substitute}`);
+  }
   console.log(`dead:      ${by('broken').length}  ${by('broken').map((r) => r.name).join(' ')}`);
-  console.log(`unchecked: ${by('unchecked').length}`);
+  console.log(`skipped:   ${by('skipped').length}  (mutating, interactive or expensive by design)`);
+  console.log(`unchecked: ${by('unchecked').length}  ${by('unchecked').map((r) => r.name).join(' ')}`);
 
   // A plan limit is the account's problem; a dead tool is ours.
   process.exit(by('broken').length > 0 ? 1 : 0);

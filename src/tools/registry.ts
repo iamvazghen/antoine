@@ -49,6 +49,8 @@ import {
   INVESTMENT_REPORT_DESCRIPTION,
   scoreHistoryTool,
   SCORE_HISTORY_DESCRIPTION,
+  screenUniverseTool,
+  SCREEN_UNIVERSE_DESCRIPTION,
 } from './scoring.js';
 
 /**
@@ -88,6 +90,13 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       tool: investmentReportTool,
       description: INVESTMENT_REPORT_DESCRIPTION,
       compactDescription: 'Grade and rank the whole universe, diff against the last run, review holdings for decay. The periodic review.',
+      concurrencySafe: false,
+    },
+    {
+      name: 'screen_universe',
+      tool: screenUniverseTool,
+      description: SCREEN_UNIVERSE_DESCRIPTION,
+      compactDescription: 'Screen the universe by numeric criteria (P/E, ROE, margins, growth) using free cached data. Replaces the paid screeners.',
       concurrencySafe: false,
     },
     {

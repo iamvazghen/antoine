@@ -153,3 +153,63 @@ export const scoreHistoryTool = new DynamicStructuredTool({
     }
   },
 });
+
+export const SCREEN_UNIVERSE_DESCRIPTION = `
+Screens your universe against numeric criteria using free data only.
+
+## Why this exists
+Both paid screeners are unavailable: financialdatasets.ai is out of credits and
+FMP's screener is above the current plan. Grading already caches 133 metrics per
+ticker for 24 hours, so screening those names costs little or nothing.
+
+## Scope — say this to the user
+It screens the **configured universe** (50 names by default), not the whole
+market. A market-wide screen needs a bulk endpoint that no free tier provides.
+If the user wants different names screened, change the universe with
+\`score_history\` action \`set_universe\`, or pass \`tickers\` directly.
+
+## Filters
+Each filter is { metric, operator, value } with operator gt/gte/lt/lte/eq.
+A metric the provider does not report counts as a FAIL, never a pass — so a
+result is always a name that genuinely met every test.
+
+Available metrics: pe, forward_pe, peg, ps, pb, ev_ebitda, dividend_yield,
+payout_ratio, roe, roa, roic, gross_margin, operating_margin, net_margin,
+revenue_growth, revenue_growth_5y, eps_growth, eps_growth_5y, debt_to_equity,
+current_ratio, interest_coverage, market_cap, beta, return_52w.
+
+Percentages are whole numbers (roe 25 means 25%), not fractions.
+`.trim();
+
+export const screenUniverseTool = new DynamicStructuredTool({
+  name: 'screen_universe',
+  description:
+    'Screens the configured universe against numeric financial criteria (P/E, ROE, margins, growth, leverage) using free cached data. Use when the user asks to find or filter stocks by the numbers. Covers the universe, not the whole market — say so.',
+  schema: z.object({
+    filters: z
+      .array(
+        z.object({
+          metric: z.string().describe('Metric name, e.g. "pe", "roe", "revenue_growth".'),
+          operator: z.enum(['gt', 'gte', 'lt', 'lte', 'eq']),
+          value: z.number(),
+        }),
+      )
+      .min(1)
+      .describe('All filters must pass for a name to match.'),
+    sort_by: z.string().optional().describe('Metric to sort matches by.'),
+    descending: z.boolean().default(true),
+    limit: z.number().int().min(1).max(50).default(20),
+    tickers: z.array(z.string()).optional().describe('Screen this list instead of the saved universe.'),
+  }),
+  func: async (input) => {
+    const { screenUniverse } = await import('../scoring/screen.js');
+    const result = await screenUniverse({
+      filters: input.filters as Array<{ metric: string; operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq'; value: number }>,
+      sortBy: input.sort_by,
+      descending: input.descending,
+      limit: input.limit,
+      universe: input.tickers,
+    });
+    return formatToolResult(result);
+  },
+});
