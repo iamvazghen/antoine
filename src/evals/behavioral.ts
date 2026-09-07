@@ -9,6 +9,33 @@
  *   bun run src/evals/behavioral.ts
  */
 import 'dotenv/config';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+/**
+ * Point state writes at a scratch directory before anything resolves a path.
+ *
+ * These are full agent runs, so a case like "I bought 100 shares of KO" does
+ * what it says: the first run of it added a real position to the real
+ * portfolio, which then had to be picked out of the JSON by hand. A behavioral
+ * suite that mutates the state it is testing against is not repeatable, and
+ * worse, it silently corrupts the thing the operator actually relies on.
+ *
+ * Memory is copied in rather than left empty, because what the agent recalls
+ * changes which tools it reaches for - that is part of what is under test.
+ */
+const SCRATCH_HOME = mkdtempSync(join(tmpdir(), 'antoine-behavioral-'));
+const REAL_HOME = process.env.ANTOINE_HOME?.trim() || (existsSync('.antoine') ? '.antoine' : '');
+mkdirSync(join(SCRATCH_HOME, 'memory'), { recursive: true });
+if (REAL_HOME) {
+  for (const f of ['MEMORY.md']) {
+    const src = join(REAL_HOME, 'memory', f);
+    if (existsSync(src)) copyFileSync(src, join(SCRATCH_HOME, 'memory', f));
+  }
+}
+process.env.ANTOINE_HOME = SCRATCH_HOME;
+
 import { Agent } from '../agent/agent.js';
 import type { AgentEvent } from '../agent/types.js';
 import { InMemoryChatHistory } from '../utils/in-memory-chat-history.js';
@@ -28,7 +55,7 @@ const DEFAULT_MODEL = 'minimax:MiniMax-M2.5';
 
 const TEST_CASES: TestCase[] = [
   // 1. Simple US equity snapshot
-  { label: 'AAPL price snapshot', query: "What's the current price and day's change for Apple?", expectAnyOf: ['polygon_stock_snapshot', 'finnhub_quote', 'get_stock_price', 'twelvedata_quote', 'alphavantage_stock_quote'] },
+  { label: 'AAPL price snapshot', query: "What's the current price and day's change for Apple?", expectAnyOf: ['polygon_stock_snapshot', 'finnhub_quote', 'get_stock_price', 'twelvedata_quote', 'alphavantage_stock_quote', 'yahoo_quote'] },
   // 2. Financial ratios — should prefer FMP per the router preference. The agent
   // may either call the meta-tool (get_financials / get_key_ratios) which
   // wraps the leaves, or call the leaves directly (fmp_ratios). Both are
@@ -41,7 +68,10 @@ const TEST_CASES: TestCase[] = [
   // 5. US macro
   { label: 'US Fed + Treasury yields', query: 'What is the current Fed funds rate and the 10-year Treasury yield?', expectAnyOf: ['get_fred_series'] },
   // 6. Global non-US ticker (EODHD path)
-  { label: 'Toyota global price', query: 'Show me Toyota (7203.TSE) latest price in JPY.', expectAnyOf: ['get_global_stock', 'eodhd_eod_prices'] },
+  // yahoo_quote is the right answer here now: keyless, and it returned
+  // JPY 3,096 tagged Tokyo Stock Exchange. EODHD would have spent one of
+  // that provider's 20 daily calls for the same number.
+  { label: 'Toyota global price', query: 'Show me Toyota (7203.TSE) latest price in JPY.', expectAnyOf: ['get_global_stock', 'eodhd_eod_prices', 'yahoo_quote'] },
   // 7. Crypto
   { label: 'BTC + ETH price', query: 'What is BTC at in USD right now? Same for ETH.', expectAnyOf: ['coingecko_simple_price', 'cmc_quotes', 'alphavantage_crypto_rating', 'get_crypto_price_snapshot'] },
   // 8. High-conviction trade — should auto-fire run_debate per Phase C behavior
