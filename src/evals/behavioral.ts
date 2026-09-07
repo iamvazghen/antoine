@@ -46,6 +46,26 @@ const TEST_CASES: TestCase[] = [
   { label: 'BTC + ETH price', query: 'What is BTC at in USD right now? Same for ETH.', expectAnyOf: ['coingecko_simple_price', 'cmc_quotes', 'alphavantage_crypto_rating', 'get_crypto_price_snapshot'] },
   // 8. High-conviction trade — should auto-fire run_debate per Phase C behavior
   { label: 'High-conviction trade (auto-debate)', query: "Should I buy NVDA here for a 12-month hold? I have $500k and a 1% risk budget.", expectAnyOf: ['run_debate', 'get_financials', 'get_market_data', 'devils-advocate', 'macro-overlay'] },
+  // 9. The headline feature. Grading had no behavioral coverage at all, which
+  // means nothing checked that the agent reaches for it when asked the exact
+  // question it was built to answer.
+  { label: 'Grade a ticker', query: 'Rate NVDA as an investment from 0 to 100, short term and long term.', expectAnyOf: ['grade_ticker'] },
+  // 10. The recurring review the cron job exists to run.
+  { label: 'Best picks review', query: 'What are your best investment picks right now for a long-term hold?', expectAnyOf: ['investment_report', 'grade_ticker'] },
+  // 11. Screening by the numbers — must not fall back to a paid screener.
+  { label: 'Numeric screen', query: 'Find me companies with return on equity above 20% and operating margin above 25%.', expectAnyOf: ['screen_universe', 'fmp_stock_screener', 'stock_screener'] },
+  // 12. Non-US macro. Before fred_search this was unanswerable: the agent could
+  // only fetch nine hard-coded US series.
+  { label: 'German bond yield', query: 'What is the German 10-year government bond yield doing this year?', expectAnyOf: ['fred_search', 'get_fred_series', 'get_fred_series_multi', 'get_economic_indicators'] },
+  // 13. Insider activity — dead until Finnhub was wired in.
+  { label: 'Insider activity', query: 'Have Apple insiders been buying or selling recently?', expectAnyOf: ['finnhub_insider_transactions', 'finnhub_insider_sentiment', 'get_insider_trades'] },
+  // 14. A company named, not tickered. Resolution was dead until symbol search.
+  { label: 'Name to ticker', query: 'Give me a quick read on Rheinmetall as an investment.', expectAnyOf: ['finnhub_symbol_search', 'grade_ticker', 'yahoo_quote', 'web_search'] },
+  // 15. Analyst actions rather than a single consensus number.
+  { label: 'Analyst ratings', query: 'What have analysts been saying about Apple over the last few months? Any upgrades or downgrades?', expectAnyOf: ['benzinga_analyst_ratings', 'finnhub_recommendation', 'fmp_price_target', 'get_news'] },
+  // 16. Portfolio write path. The agent has to recognise a stated trade as an
+  // instruction to record it, not as a question to answer.
+  { label: 'Record a position', query: 'I bought 100 shares of KO at $70 today. Add it to my portfolio - long-term income position, medium conviction.', expectAnyOf: ['portfolio_add'] },
 ];
 
 interface TestOutcome {

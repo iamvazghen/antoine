@@ -23,6 +23,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "health": "bun run src/evals/provider-health.ts",
+    "health:stateful": "bun run src/evals/stateful-tools.ts",
+    "behavioral": "bun run src/evals/behavioral.ts",
     "test:watch": "bun test --watch",
     "postinstall": "playwright install chromium"
   },

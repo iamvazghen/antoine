@@ -131,11 +131,22 @@ To press Enter:
 
 /**
  * Ensure browser and page are initialized.
- * Lazily launches a headless Chromium browser on first use.
+ *
+ * Headless by default. The comment here used to say headless while the code
+ * passed `headless: false`, which opens a visible window - it timed out after
+ * 180s locally and cannot work at all on the VPS, where Antoine actually runs
+ * and there is no display. Set ANTOINE_BROWSER_HEADFUL=1 to watch it work
+ * while debugging on a desktop.
+ *
+ * Verified headless on the VPS (Example Domain in 718ms). On this Windows
+ * checkout the launch handshake times out because the renderer sandbox is
+ * denied access to chrome.exe (0x5) - a local ACL problem, not a code one, so
+ * a browser failure on Windows says nothing about production.
  */
 async function ensureBrowser(): Promise<Page> {
   if (!browser) {
-    browser = await chromium.launch({ headless: false });
+    const headful = process.env.ANTOINE_BROWSER_HEADFUL === '1';
+    browser = await chromium.launch({ headless: !headful });
   }
   if (!page) {
     const context = await browser.newContext();
