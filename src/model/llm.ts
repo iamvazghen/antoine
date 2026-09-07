@@ -185,9 +185,24 @@ interface CallLlmOptions {
    * whatever provider is default — including slow free proxies that can stall
    * for minutes. A timeout converts a multi-minute hang into a fast, recoverable
    * error so the agent can move on.
+   *
+   * Defaults to DEFAULT_LLM_TIMEOUT_MS. Leaving it unset used to mean no
+   * ceiling at all, which is the opposite of what this comment promised.
    */
   timeoutMs?: number;
 }
+
+/**
+ * Ceiling for a single callLlm, covering all of withRetry's attempts.
+ *
+ * withLlmTimeout treats an undefined budget as no budget, and nine of the ten
+ * callers never passed one - so a provider that accepted the connection and then
+ * went quiet hung the caller forever. In practice that meant read_filings and the
+ * other planning meta-tools could stall a Telegram or CLI turn with no error and
+ * no output, and it hung the health sweep hard enough to need killing twice.
+ * A planning call that has not answered in two minutes is not going to.
+ */
+export const DEFAULT_LLM_TIMEOUT_MS = 120_000;
 
 function withLlmTimeout<T>(promise: Promise<T>, ms: number | undefined): Promise<T> {
   if (!ms || ms <= 0) return promise;
@@ -263,7 +278,14 @@ function buildAnthropicMessages(systemPrompt: string, userPrompt: string) {
 }
 
 export async function callLlm(prompt: string, options: CallLlmOptions = {}): Promise<LlmResult> {
-  const { model = DEFAULT_MODEL, systemPrompt, outputSchema, tools, signal, timeoutMs } = options;
+  const {
+    model = DEFAULT_MODEL,
+    systemPrompt,
+    outputSchema,
+    tools,
+    signal,
+    timeoutMs = DEFAULT_LLM_TIMEOUT_MS,
+  } = options;
   const finalSystemPrompt = systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   const llm = getChatModel(model, false);

@@ -201,7 +201,9 @@ type Status = 'ok' | 'plan' | 'broken' | 'skipped' | 'unchecked';
  * not do the one job it exists for. From the agent's side a call that never
  * comes back is a broken tool, so it is reported as one.
  */
-const TOOL_TIMEOUT_MS = 90_000;
+// Sits above DEFAULT_LLM_TIMEOUT_MS on purpose. A sweep that is stricter than
+// the agent's own budget reports tools DEAD that would have answered in time.
+const TOOL_TIMEOUT_MS = 150_000;
 
 function withTimeout<T>(work: Promise<T>, name: string): Promise<T> {
   return Promise.race([
@@ -267,7 +269,9 @@ async function main(): Promise<void> {
     // One retry before calling anything dead: a single throttled response during
     // a back-to-back sweep is not a broken tool, and a false DEAD is exactly the
     // noise that makes a health check get ignored.
-    if (r.status === 'broken') {
+    // Retrying our own timeout only doubles the wall clock: a tool that has not
+    // answered in 150s is not going to on the second ask.
+    if (r.status === 'broken' && !/no response after/.test(r.detail)) {
       await new Promise((resolve) => setTimeout(resolve, 2500));
       r = await check(entry.name, tool, args);
       if (r.status === 'broken' && LLM_PLANNING.test(r.detail)) {
