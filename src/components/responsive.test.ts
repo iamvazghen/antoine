@@ -155,7 +155,11 @@ describe('responsive layout', () => {
     // Nobody works at width 4, but a resize storm can hand you a transient bad
     // value, and throwing there takes down the whole session.
     for (const [name, make] of components) {
-      expect(() => make().render(4), name).not.toThrow();
+      try {
+        make().render(4);
+      } catch (e) {
+        throw new Error(`${name} threw at width 4: ${(e as Error).message}`);
+      }
     }
   });
 });
