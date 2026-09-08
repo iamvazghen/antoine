@@ -91,10 +91,20 @@ const EMPTY_PORTFOLIO: Portfolio = {
 };
 
 export class PortfolioStore {
-  constructor(private readonly baseDir: string = getAntoineDir()) {}
+  /**
+   * baseDir is resolved per access, not captured at construction.
+   *
+   * portfolio-tools.ts builds a single store at module load, so a default
+   * evaluated in the constructor froze whatever ANTOINE_HOME held at import
+   * time. ES imports are hoisted, so even a harness that sets ANTOINE_HOME at
+   * the top of its file runs that assignment *after* this module has already
+   * picked a directory - which is how the behavioural suite twice added a real
+   * position to the real portfolio while believing it was writing to scratch.
+   */
+  constructor(private readonly baseDir?: string) {}
 
   private getPath(): string {
-    return join(this.baseDir, PORTFOLIO_FILENAME);
+    return join(this.baseDir ?? getAntoineDir(), PORTFOLIO_FILENAME);
   }
 
   /** Read the full portfolio. Returns empty portfolio if file missing/corrupt. */

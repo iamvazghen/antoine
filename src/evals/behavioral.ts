@@ -36,13 +36,22 @@ if (REAL_HOME) {
 }
 process.env.ANTOINE_HOME = SCRATCH_HOME;
 
-import { Agent } from '../agent/agent.js';
-import type { AgentEvent } from '../agent/types.js';
-import { InMemoryChatHistory } from '../utils/in-memory-chat-history.js';
-import { resolveProvider } from '../providers.js';
-import { getActiveProviderNames, getAllProviderNames } from '../tools/finance/providers/index.js';
-import { getActiveNewsProviderNames, getAllNewsProviderNames } from '../tools/news/index.js';
-import { discoverSkills } from '../skills/registry.js';
+// Dynamic, and deliberately so: `import` statements are hoisted and run before
+// any top-level code, so a static import here would load the agent - and every
+// module that captures a state directory - before the assignment above ever
+// executed. That is not theoretical: it is how this suite twice wrote a real
+// position into the real portfolio while believing it was pointed at scratch.
+const { Agent } = await import('../agent/agent.js');
+type AgentEvent = import('../agent/types.js').AgentEvent;
+const { InMemoryChatHistory } = await import('../utils/in-memory-chat-history.js');
+const { resolveProvider } = await import('../providers.js');
+const { getActiveProviderNames, getAllProviderNames } = await import(
+  '../tools/finance/providers/index.js'
+);
+const { getActiveNewsProviderNames, getAllNewsProviderNames } = await import(
+  '../tools/news/index.js'
+);
+const { discoverSkills } = await import('../skills/registry.js');
 
 interface TestCase {
   label: string;
@@ -73,7 +82,7 @@ const TEST_CASES: TestCase[] = [
   // that provider's 20 daily calls for the same number.
   { label: 'Toyota global price', query: 'Show me Toyota (7203.TSE) latest price in JPY.', expectAnyOf: ['get_global_stock', 'eodhd_eod_prices', 'yahoo_quote'] },
   // 7. Crypto
-  { label: 'BTC + ETH price', query: 'What is BTC at in USD right now? Same for ETH.', expectAnyOf: ['coingecko_simple_price', 'cmc_quotes', 'alphavantage_crypto_rating', 'get_crypto_price_snapshot'] },
+  { label: 'BTC + ETH price', query: 'What is BTC at in USD right now? Same for ETH.', expectAnyOf: ['coingecko_simple_price', 'cmc_quotes', 'alphavantage_crypto_rating', 'get_crypto_price_snapshot', 'get_market_data'] },
   // 8. High-conviction trade — should auto-fire run_debate per Phase C behavior
   { label: 'High-conviction trade (auto-debate)', query: "Should I buy NVDA here for a 12-month hold? I have $500k and a 1% risk budget.", expectAnyOf: ['run_debate', 'get_financials', 'get_market_data', 'devils-advocate', 'macro-overlay'] },
   // 9. The headline feature. Grading had no behavioral coverage at all, which
@@ -258,7 +267,15 @@ async function main(): Promise<void> {
   console.log(`Tool cache: ${stats.size} / ${stats.maxEntries} entries (${stats.totalHits} hits across the run)`);
 }
 
-main().catch((err) => {
-  console.error('Behavioral test driver error:', err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // The suite prints its summary and then hangs: something in the agent stack
+    // (sqlite handles, a keep-alive socket) holds the loop open, so the run only
+    // ended when the outer timeout killed it 33 minutes after the work finished.
+    // Nothing is left to await once the summary is out.
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('Behavioral test driver error:', err);
+    process.exit(1);
+  });
