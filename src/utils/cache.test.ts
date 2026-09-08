@@ -2,8 +2,19 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { buildCacheKey, readCache, writeCache } from './cache.js';
+import { antoinePath } from './paths.js';
 
-const TEST_CACHE_DIR = '.antoine/cache';
+/**
+ * Ask the resolver where the cache is rather than assuming.
+ *
+ * This used to hard-code '.antoine/cache'. antoinePath() prefers ./.antoine when
+ * that directory exists and falls back to ~/.antoine when it does not - so on a
+ * developer checkout the guess was right, and on a fresh CI checkout (.antoine is
+ * gitignored) the test wrote a corrupt entry to ./.antoine/cache while readCache
+ * looked in ~/.antoine/cache. The two corrupt-entry cases then failed on every
+ * push for weeks, in the one environment nobody was watching.
+ */
+const TEST_CACHE_DIR = antoinePath('cache');
 
 // ---------------------------------------------------------------------------
 // buildCacheKey
