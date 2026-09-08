@@ -276,9 +276,14 @@ export function buildSystemPrompt(
     ? `\n## Tables (for comparative/tabular data)\n\n${profile.tables}`
     : '';
 
+  // Everything above the first volatile character is a cacheable prefix, and
+  // MiniMax caches automatically on prefix match. "Current date" used to sit on
+  // line 3, above the ~20k tokens of tool list, policy and skills - so at every
+  // midnight the date changed and the entire block behind it was re-billed.
+  // Measured: an identical prompt caches 93%, the same prompt with tomorrow's
+  // date caches 0%. It lives in the volatile tail now, with memory and the
+  // portfolio, so a rollover costs only the tail.
   return `You are Antoine, a ${profile.label} assistant with access to research tools.
-
-Current date: ${getCurrentDate()}
 
 ${profile.preamble}
 
@@ -297,6 +302,10 @@ ${toolDescriptions}
 - Only respond directly for conceptual definitions, stable historical facts, or conversational queries.
 
 ${buildSkillsSection()}
+
+## Current Context
+
+Current date: ${getCurrentDate()}
 
 ${buildMemorySection(memoryFiles ?? [], memoryContext)}
 
