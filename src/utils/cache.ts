@@ -29,7 +29,17 @@ interface CacheEntry {
   cachedAt: string;
 }
 
-const CACHE_DIR = antoinePath('cache');
+/**
+ * Resolved per call, not frozen at import.
+ *
+ * As a module-level constant this captured whatever ANTOINE_HOME held when the
+ * module first loaded, so a later change was ignored - which meant the test
+ * suite wrote into the real cache directory while asserting against a scratch
+ * one, and two cases failed for reasons that had nothing to do with the cache.
+ * The same frozen-constant pattern is still used for other state paths; they are
+ * set before launch in production, but the pattern is a trap.
+ */
+const cacheDir = () => antoinePath('cache');
 
 // ============================================================================
 // Helpers
@@ -132,7 +142,7 @@ export function readCache(
   ttlMs?: number,
 ): { data: Record<string, unknown>; url: string } | null {
   const cacheKey = buildCacheKey(endpoint, params);
-  const filepath = join(CACHE_DIR, cacheKey);
+  const filepath = join(cacheDir(), cacheKey);
   const label = describeRequest(endpoint, params);
 
   if (!existsSync(filepath)) {
@@ -178,7 +188,7 @@ export function writeCache(
   url: string
 ): void {
   const cacheKey = buildCacheKey(endpoint, params);
-  const filepath = join(CACHE_DIR, cacheKey);
+  const filepath = join(cacheDir(), cacheKey);
   const label = describeRequest(endpoint, params);
 
   const entry: CacheEntry = {

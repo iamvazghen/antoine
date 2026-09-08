@@ -161,6 +161,12 @@ export function readLedger(ticker: string): ScoreRecord[] {
     });
 }
 
+/** Every ticker the ledger has a grade for. */
+export function readLedgerTickers(): string[] {
+  return readdirSync(scoresDir())
+    .filter((f) => f.endsWith('.jsonl'))
+    .map((f) => f.replace(/\.jsonl$/, '').toUpperCase());
+}
 export function readAllLedgers(): ScoreRecord[] {
   const dir = scoresDir();
   return readdirSync(dir)
@@ -185,13 +191,47 @@ export interface CalibrationBucket {
   medianHoldDays: number;
 }
 
+export interface CalibrationOptions {
+  /** A grade has to be this old before its forward return means anything. */
+  minDays?: number;
+  /**
+   * Today's price per ticker. Supplying it is what makes calibration possible
+   * on a realistic schedule — see the note on the function below.
+   */
+  currentPrices?: ReadonlyMap<string, number>;
+}
+
+/** What calibration is still waiting for, so an empty result can explain itself. */
+export interface CalibrationProgress {
+  gradesRecorded: number;
+  tickersTracked: number;
+  oldestGradeAgeDays: number | null;
+  daysUntilFirstObservation: number | null;
+}
+
 /**
- * Did the high grades actually do better? Pairs every ledger entry that has a
- * price with the latest price for the same ticker and buckets the forward
- * return by the grade at the time. Needs real elapsed time to say anything —
- * with a few weeks of history it reports what it has and nothing more.
+ * Did the high grades actually do better? Buckets each graded ticker's forward
+ * return by the grade it had at the time.
+ *
+ * The forward leg is today's price when `currentPrices` supplies one, and
+ * otherwise the most recent *recorded* grade for that ticker. That fallback
+ * alone made the metric almost unreachable in practice: it needs a second
+ * grade at least minDays after the first, and the reviews that write grades run
+ * monthly — 1 Sep to 1 Oct is 30 days, but 1 Oct to 1 Nov is the first pair a
+ * 30-day floor actually admits, so the first reading would have landed in
+ * November. Priced against today instead, every grade becomes an observation
+ * the moment it is old enough, with no second grade needed.
+ *
+ * It still needs elapsed time, which nothing can shortcut. What it must not do
+ * is stay silent about why it is empty — see calibrationProgress().
  */
-export function calibration(horizon: Horizon, minDays = 30): CalibrationBucket[] {
+export function calibration(
+  horizon: Horizon,
+  options: CalibrationOptions | number = {},
+): CalibrationBucket[] {
+  // Kept callable as calibration(horizon, 30).
+  const { minDays = 30, currentPrices } =
+    typeof options === 'number' ? { minDays: options, currentPrices: undefined } : options;
   const byTicker = new Map<string, ScoreRecord[]>();
   for (const r of readAllLedgers()) {
     if (r.price === null) continue;
@@ -209,20 +249,27 @@ export function calibration(horizon: Horizon, minDays = 30): CalibrationBucket[]
   ];
   const buckets = bands.map((b) => ({ ...b, returns: [] as number[], holds: [] as number[] }));
 
-  for (const records of byTicker.values()) {
+  const now = Date.now();
+  for (const [ticker, records] of byTicker) {
     const sorted = [...records].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-    const last = sorted[sorted.length - 1];
-    if (last.price === null) continue;
+    const livePrice = currentPrices?.get(ticker.toUpperCase());
 
-    for (const r of sorted.slice(0, -1)) {
+    // With a live price every grade is a candidate; without one, the newest
+    // grade is the yardstick and cannot also be an observation.
+    const exitPrice = livePrice ?? sorted[sorted.length - 1].price;
+    const exitAtMs = livePrice !== undefined ? now : Date.parse(sorted[sorted.length - 1].at);
+    if (exitPrice === null || exitPrice <= 0) continue;
+    const candidates = livePrice !== undefined ? sorted : sorted.slice(0, -1);
+
+    for (const r of candidates) {
       if (r.price === null || r.price <= 0) continue;
-      const days = (Date.parse(last.at) - Date.parse(r.at)) / 86_400_000;
+      const days = (exitAtMs - Date.parse(r.at)) / 86_400_000;
       if (days < minDays) continue;
 
       const score = horizon === 'short' ? r.short : r.long;
       const bucket = buckets.find((b) => score >= b.lo && score < b.hi);
       if (!bucket) continue;
-      bucket.returns.push(((last.price - r.price) / r.price) * 100);
+      bucket.returns.push(((exitPrice - r.price) / r.price) * 100);
       bucket.holds.push(days);
     }
   }
@@ -235,4 +282,32 @@ export function calibration(horizon: Horizon, minDays = 30): CalibrationBucket[]
       meanForwardReturn: b.returns.reduce((a, x) => a + x, 0) / b.returns.length,
       medianHoldDays: [...b.holds].sort((a, x) => a - x)[Math.floor(b.holds.length / 2)],
     }));
+}
+
+/**
+ * Why calibration is empty, in numbers.
+ *
+ * "No grade is yet 30 days old" is true but unactionable — it does not say
+ * whether anything is being recorded at all, or when the wait ends. A reader
+ * cannot tell a working system that needs patience from a broken one.
+ */
+export function calibrationProgress(minDays = 30): CalibrationProgress {
+  const records = readAllLedgers().filter((r) => r.price !== null);
+  if (records.length === 0) {
+    return {
+      gradesRecorded: 0,
+      tickersTracked: 0,
+      oldestGradeAgeDays: null,
+      daysUntilFirstObservation: null,
+    };
+  }
+  const now = Date.now();
+  const oldestMs = Math.min(...records.map((r) => Date.parse(r.at)));
+  const ageDays = (now - oldestMs) / 86_400_000;
+  return {
+    gradesRecorded: records.length,
+    tickersTracked: new Set(records.map((r) => r.ticker.toUpperCase())).size,
+    oldestGradeAgeDays: Math.floor(ageDays),
+    daysUntilFirstObservation: Math.max(0, Math.ceil(minDays - ageDays)),
+  };
 }

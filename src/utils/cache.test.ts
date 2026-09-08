@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { buildCacheKey, readCache, writeCache } from './cache.js';
 import { antoinePath } from './paths.js';
 
@@ -14,7 +15,19 @@ import { antoinePath } from './paths.js';
  * looked in ~/.antoine/cache. The two corrupt-entry cases then failed on every
  * push for weeks, in the one environment nobody was watching.
  */
-const TEST_CACHE_DIR = antoinePath('cache');
+const TEST_HOME = mkdtempSync(join(tmpdir(), 'antoine-cache-test-'));
+
+/**
+ * Claim ANTOINE_HOME for the duration of each case, and ask the resolver where
+ * the cache went rather than assuming.
+ *
+ * Two separate bugs met here. The path was hard-coded to '.antoine/cache', which
+ * matched a developer checkout and not a fresh CI one, so these two cases failed
+ * on every push for weeks. And other suites set ANTOINE_HOME for their own
+ * scratch state, so a module-load-time reading of it went stale as soon as tests
+ * ran together.
+ */
+const cacheDir = () => antoinePath('cache');
 
 // ---------------------------------------------------------------------------
 // buildCacheKey
@@ -59,14 +72,16 @@ describe('buildCacheKey', () => {
 
 describe('readCache / writeCache', () => {
   beforeEach(() => {
-    if (existsSync(TEST_CACHE_DIR)) {
-      rmSync(TEST_CACHE_DIR, { recursive: true });
+    process.env.ANTOINE_HOME = TEST_HOME;
+    if (existsSync(cacheDir())) {
+      rmSync(cacheDir(), { recursive: true });
     }
   });
 
   afterEach(() => {
-    if (existsSync(TEST_CACHE_DIR)) {
-      rmSync(TEST_CACHE_DIR, { recursive: true });
+    process.env.ANTOINE_HOME = TEST_HOME;
+    if (existsSync(cacheDir())) {
+      rmSync(cacheDir(), { recursive: true });
     }
   });
 
@@ -94,8 +109,8 @@ describe('readCache / writeCache', () => {
     const params = { ticker: 'AAPL', start_date: '2024-01-01', end_date: '2024-12-31', interval: 'day', interval_multiplier: 1 };
 
     const key = buildCacheKey(endpoint, params);
-    const filepath = join(TEST_CACHE_DIR, key);
-    const dir = join(TEST_CACHE_DIR, key.split('/')[0]!);
+    const filepath = join(cacheDir(), key);
+    const dir = join(cacheDir(), key.split('/')[0]!);
     mkdirSync(dir, { recursive: true });
     writeFileSync(filepath, '{ broken json!!!');
 
@@ -109,8 +124,8 @@ describe('readCache / writeCache', () => {
     const params = { ticker: 'AAPL', start_date: '2024-01-01', end_date: '2024-12-31', interval: 'day', interval_multiplier: 1 };
 
     const key = buildCacheKey(endpoint, params);
-    const filepath = join(TEST_CACHE_DIR, key);
-    const dir = join(TEST_CACHE_DIR, key.split('/')[0]!);
+    const filepath = join(cacheDir(), key);
+    const dir = join(cacheDir(), key.split('/')[0]!);
     mkdirSync(dir, { recursive: true });
     writeFileSync(filepath, JSON.stringify({ wrong: 'shape' }));
 

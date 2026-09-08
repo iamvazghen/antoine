@@ -8,8 +8,17 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { formatToolResult } from './types.js';
-import { gradeTicker, readLedger, calibration } from '../scoring/grade.js';
+import {
+  gradeTicker,
+  readLedger,
+  calibration,
+  calibrationProgress,
+  readLedgerTickers,
+} from '../scoring/grade.js';
 import { loadUniverse, saveUniverse, runUniverseReport } from '../scoring/report.js';
+
+/** "1 day", not "1 days" - the agent reads this line out verbatim. */
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
 
 export const GRADE_TICKER_DESCRIPTION = `
 Grades a single ticker from 0-100 on two horizons and returns the full factor breakdown.
@@ -134,14 +143,40 @@ export const scoreHistoryTool = new DynamicStructuredTool({
         return formatToolResult({ ticker: input.ticker.toUpperCase(), records });
       }
       case 'calibration': {
-        const buckets = calibration(input.horizon);
+        const progress = calibrationProgress();
+
+        // Price the forward leg against today rather than against whenever the
+        // ticker next happened to be re-graded. Without this a grade only
+        // counts once a *second* grade exists 30+ days later, which on a
+        // monthly review cadence pushes the first reading out by months.
+        const currentPrices = new Map<string, number>();
+        if (progress.daysUntilFirstObservation === 0) {
+          const { fetchBundle, latestPrice } = await import('../scoring/data.js');
+          const tickers = [...new Set(readLedgerTickers())].slice(0, 60);
+          await Promise.all(
+            tickers.map(async (t) => {
+              try {
+                const price = latestPrice(await fetchBundle(t));
+                if (price !== null) currentPrices.set(t.toUpperCase(), price);
+              } catch {
+                // A ticker we cannot price today simply falls back to the
+                // recorded-grade comparison; it must not fail the whole report.
+              }
+            }),
+          );
+        }
+
+        const buckets = calibration(input.horizon, { currentPrices });
         return formatToolResult({
           horizon: input.horizon,
           buckets,
+          progress,
           note:
-            buckets.length === 0
-              ? 'No grade is yet 30 days old with a price on both ends. Calibration needs elapsed time, not more grading.'
-              : 'Mean forward return by the grade band at the time of grading.',
+            buckets.length > 0
+              ? 'Mean forward return by the grade band at the time of grading, priced to today.'
+              : progress.gradesRecorded === 0
+                ? 'Nothing is being recorded yet. Grade something, or run investment_report, before expecting calibration.'
+                : `${progress.gradesRecorded} grades across ${progress.tickersTracked} tickers; the oldest is ${plural(progress.oldestGradeAgeDays ?? 0, 'day')} old and the first observation matures in ${plural(progress.daysUntilFirstObservation ?? 0, 'day')}. Calibration needs elapsed time, not more grading.`,
         });
       }
       case 'universe':

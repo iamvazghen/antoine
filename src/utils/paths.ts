@@ -29,12 +29,30 @@ function resolveAntoineDir(): string {
   return join(homedir(), '.antoine');
 }
 
-const ANTOINE_DIR = resolveAntoineDir();
+/**
+ * Memoised against the value of $ANTOINE_HOME rather than resolved once and
+ * frozen.
+ *
+ * Freezing at module load meant a process that set ANTOINE_HOME after the module
+ * graph had loaded was silently ignored - so a test that pointed state at a
+ * scratch directory still read and wrote the real portfolio, memory and score
+ * ledger, depending purely on which file imported first. Three separate suites
+ * hit that before it was traced here.
+ *
+ * Still resolved to an absolute path, which is what the original note was really
+ * protecting: a relative '.antoine' meant a scheduled run started outside the
+ * repo root read an empty brain.
+ */
+let cached: { key: string; dir: string } | null = null;
 
 export function getAntoineDir(): string {
-  return ANTOINE_DIR;
+  const key = process.env.ANTOINE_HOME?.trim() ?? '';
+  if (!cached || cached.key !== key) {
+    cached = { key, dir: resolveAntoineDir() };
+  }
+  return cached.dir;
 }
 
 export function antoinePath(...segments: string[]): string {
-  return join(ANTOINE_DIR, ...segments);
+  return join(getAntoineDir(), ...segments);
 }
