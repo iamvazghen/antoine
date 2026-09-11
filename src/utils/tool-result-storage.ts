@@ -15,7 +15,8 @@ export const MAX_TOOL_RESULT_CHARS = 50_000;
 /** Characters to include in the preview when a result is persisted. */
 export const PREVIEW_CHARS = 2_000;
 
-const RESULTS_DIR = antoinePath('tool-results');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const RESULTS_DIR = () => antoinePath('tool-results');
 
 /**
  * Persist a large tool result to disk and return a compact preview.
@@ -25,12 +26,12 @@ export function persistLargeResult(
   toolCallId: string,
   result: string,
 ): { preview: string; filePath: string } {
-  if (!existsSync(RESULTS_DIR)) {
-    mkdirSync(RESULTS_DIR, { recursive: true });
+  if (!existsSync(RESULTS_DIR())) {
+    mkdirSync(RESULTS_DIR(), { recursive: true });
   }
 
   const sanitizedId = toolCallId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filePath = `${RESULTS_DIR}/${sanitizedId}.txt`;
+  const filePath = `${RESULTS_DIR()}/${sanitizedId}.txt`;
   writeFileSync(filePath, result, 'utf-8');
 
   const preview = result.slice(0, PREVIEW_CHARS);

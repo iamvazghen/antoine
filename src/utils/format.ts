@@ -25,3 +25,20 @@ const compactFormatter = new Intl.NumberFormat('en', {
 export function formatTokensCompact(n: number): string {
   return compactFormatter.format(n).toLowerCase();
 }
+
+/**
+ * Current date, formatted for prompts.
+ *
+ * Lives in this leaf util rather than agent/prompts.ts on purpose: five tool
+ * files need only this one pure helper, and importing it from prompts.ts made
+ * every one of them part of a prompts → registry → tool → prompts cycle.
+ */
+export function getCurrentDate(): string {
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  };
+  return new Date().toLocaleDateString('en-US', options);
+}

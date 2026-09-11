@@ -4,7 +4,7 @@ import { AIMessage, ToolCall } from '@langchain/core/messages';
 import { z } from 'zod';
 import { callLlm } from '../../model/llm.js';
 import { formatToolResult, type SourceRef } from '../types.js';
-import { getCurrentDate } from '../../agent/prompts.js';
+import { getCurrentDate } from '../../utils/format.js';
 import { withTimeout, SUB_TOOL_TIMEOUT_MS } from './utils.js';
 import { FINANCIAL_FORMATTERS } from './formatters.js';
 import { getAllProviderLeaves } from './providers/index.js';

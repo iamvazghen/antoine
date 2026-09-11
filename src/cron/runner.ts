@@ -4,10 +4,11 @@ import { loadCronStore, saveCronStore } from './store.js';
 import { computeNextRunAtMs } from './schedule.js';
 import { executeCronJob } from './executor.js';
 
-const LOG_PATH = antoinePath('gateway-debug.log');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const LOG_PATH = () => antoinePath('gateway-debug.log');
 
 function debugLog(msg: string) {
-  appendFileSync(LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
+  appendFileSync(LOG_PATH(), `${new Date().toISOString()} ${msg}\n`);
 }
 
 const MAX_TIMER_DELAY_MS = 60_000; // Cap at 60s to pick up newly added jobs

@@ -4,20 +4,21 @@ import { dirname } from 'node:path';
 import { antoinePath } from '../utils/paths.js';
 import type { CronStore } from './types.js';
 
-const CRON_STORE_PATH = antoinePath('cron', 'jobs.json');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const CRON_STORE_PATH = () => antoinePath('cron', 'jobs.json');
 
 const EMPTY_STORE: CronStore = { version: 1, jobs: [] };
 
 export function getCronStorePath(): string {
-  return CRON_STORE_PATH;
+  return CRON_STORE_PATH();
 }
 
 export function loadCronStore(): CronStore {
-  if (!existsSync(CRON_STORE_PATH)) {
+  if (!existsSync(CRON_STORE_PATH())) {
     return { ...EMPTY_STORE, jobs: [] };
   }
   try {
-    const raw = readFileSync(CRON_STORE_PATH, 'utf-8');
+    const raw = readFileSync(CRON_STORE_PATH(), 'utf-8');
     const parsed = JSON.parse(raw) as CronStore;
     if (!parsed.jobs || !Array.isArray(parsed.jobs)) {
       return { ...EMPTY_STORE, jobs: [] };
@@ -29,17 +30,17 @@ export function loadCronStore(): CronStore {
 }
 
 export function saveCronStore(store: CronStore): void {
-  const dir = dirname(CRON_STORE_PATH);
+  const dir = dirname(CRON_STORE_PATH());
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
 
   const data = JSON.stringify(store, null, 2);
-  const tmp = `${CRON_STORE_PATH}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  const tmp = `${CRON_STORE_PATH()}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
 
   try {
     writeFileSync(tmp, data, 'utf-8');
-    renameSync(tmp, CRON_STORE_PATH);
+    renameSync(tmp, CRON_STORE_PATH());
   } catch (err) {
     // Clean up temp file on failure
     try { unlinkSync(tmp); } catch { /* ignore */ }

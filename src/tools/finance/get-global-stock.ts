@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { fetchJson } from './utils.js';
 import { formatToolResult, type SourceRef } from '../types.js';
 import { parseTicker, getRegion, formatMarketCap } from './region-helpers.js';
+import { toUsd } from './fx.js';
 import { yahooQuote, toYahooSymbol, isYahooSupported } from './providers/yahoo.js';
 
 const LABEL = 'Global Stock (EODHD)';
@@ -182,6 +183,12 @@ export const getGlobalStock = new DynamicStructuredTool({
       bars_returned: bars.length,
     };
 
+    // Cross-region comparison is the whole point of this tool, and "2400" means
+    // nothing until you know it is GBp. Null when the FX lookup fails; the
+    // local figure above is still correct.
+    const closeUsd =
+      latest?.close != null ? await toUsd(Number(latest.close), region.currency) : null;
+
     // Build a market-cap note for the agent (EODHD fundamentals has it; this
     // endpoint only returns EOD, so the agent can call eodhd_fundamentals for
     // the full picture).
@@ -196,7 +203,14 @@ export const getGlobalStock = new DynamicStructuredTool({
       sources,
       provider: 'eodhd',
       asOf: new Date().toISOString(),
-      hint: formatMarketCap(0, region) === '' ? undefined : `Prices in ${region.currency} (local unit).`,
+      close_usd: closeUsd === null ? null : Number(closeUsd.toFixed(4)),
+      hint:
+        formatMarketCap(0, region) === ''
+          ? undefined
+          : `Prices in ${region.currency} (local unit).` +
+            (closeUsd === null
+              ? ' USD equivalent unavailable.'
+              : ` close_usd is the same close converted at today's ECB rate.`),
     });
   },
 });

@@ -6,6 +6,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getChannelProfile } from './channels.js';
 import { antoinePath } from '../utils/paths.js';
+import { getCurrentDate } from '../utils/format.js';
+
+export { getCurrentDate };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,19 +16,6 @@ const __dirname = dirname(__filename);
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Returns the current date formatted for prompts.
- */
-export function getCurrentDate(): string {
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  };
-  return new Date().toLocaleDateString('en-US', options);
-}
 
 /**
  * Load SOUL.md content from user override or bundled file.

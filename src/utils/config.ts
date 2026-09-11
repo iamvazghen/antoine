@@ -2,7 +2,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { antoinePath } from './paths.js';
 
-const SETTINGS_FILE = antoinePath('settings.json');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const SETTINGS_FILE = () => antoinePath('settings.json');
 
 // Map legacy model IDs to provider IDs for migration
 const MODEL_TO_PROVIDER_MAP: Record<string, string> = {
@@ -33,12 +34,12 @@ interface Config {
 }
 
 export function loadConfig(): Config {
-  if (!existsSync(SETTINGS_FILE)) {
+  if (!existsSync(SETTINGS_FILE())) {
     return {};
   }
 
   try {
-    const content = readFileSync(SETTINGS_FILE, 'utf-8');
+    const content = readFileSync(SETTINGS_FILE(), 'utf-8');
     let config = JSON.parse(content) as Config;
 
     // Upgrade deprecated model IDs (e.g. gpt-5.2 -> gpt-5.5)
@@ -55,11 +56,11 @@ export function loadConfig(): Config {
 
 export function saveConfig(config: Config): boolean {
   try {
-    const dir = dirname(SETTINGS_FILE);
+    const dir = dirname(SETTINGS_FILE());
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(SETTINGS_FILE, JSON.stringify(config, null, 2));
+    writeFileSync(SETTINGS_FILE(), JSON.stringify(config, null, 2));
     return true;
   } catch {
     return false;

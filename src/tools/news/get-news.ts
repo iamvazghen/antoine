@@ -12,7 +12,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { callLlm } from '../../model/llm.js';
 import { formatToolResult, type SourceRef } from '../types.js';
-import { getCurrentDate } from '../../agent/prompts.js';
+import { getCurrentDate } from '../../utils/format.js';
 import { withTimeout, SUB_TOOL_TIMEOUT_MS } from '../finance/utils.js';
 import { getLeaves as newsapiLeaves } from './newsapi.js';
 import { getLeaves as marketauxLeaves } from './marketaux.js';

@@ -7,7 +7,8 @@ import { loadGatewayConfig, saveGatewayConfig } from '../../gateway/config.js';
 import { buildHeartbeatQuery } from '../../gateway/heartbeat/prompt.js';
 import { loadCronStore, saveCronStore } from '../../cron/store.js';
 
-const HEARTBEAT_MD_PATH = antoinePath('HEARTBEAT.md');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const HEARTBEAT_MD_PATH = () => antoinePath('HEARTBEAT.md');
 const HEARTBEAT_JOB_NAME = 'Heartbeat';
 
 export const HEARTBEAT_TOOL_DESCRIPTION = `
@@ -87,10 +88,10 @@ export const heartbeatTool = new DynamicStructuredTool({
   schema: heartbeatSchema,
   func: async (input) => {
     if (input.action === 'view') {
-      if (!existsSync(HEARTBEAT_MD_PATH)) {
+      if (!existsSync(HEARTBEAT_MD_PATH())) {
         return 'No heartbeat checklist configured yet. The heartbeat will use a default checklist (major index moves + breaking financial news). Use the update action to customize what gets checked.';
       }
-      const content = readFileSync(HEARTBEAT_MD_PATH, 'utf-8');
+      const content = readFileSync(HEARTBEAT_MD_PATH(), 'utf-8');
       return `Current heartbeat checklist:\n\n${content}`;
     }
 
@@ -98,11 +99,11 @@ export const heartbeatTool = new DynamicStructuredTool({
       if (!input.content) {
         return 'Error: content is required for the update action.';
       }
-      const dir = dirname(HEARTBEAT_MD_PATH);
+      const dir = dirname(HEARTBEAT_MD_PATH());
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }
-      writeFileSync(HEARTBEAT_MD_PATH, input.content, 'utf-8');
+      writeFileSync(HEARTBEAT_MD_PATH(), input.content, 'utf-8');
 
       const lines = input.content.split('\n').filter((l) => l.trim().startsWith('-'));
       const hasItems = lines.length > 0;

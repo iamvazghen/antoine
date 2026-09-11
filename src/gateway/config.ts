@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { normalizeE164 } from './utils.js';
 import { antoinePath } from '../utils/paths.js';
 
-const DEFAULT_GATEWAY_PATH = antoinePath('gateway.json');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const DEFAULT_GATEWAY_PATH = () => antoinePath('gateway.json');
 const DmPolicySchema = z.enum(['pairing', 'allowlist', 'open', 'disabled']);
 const GroupPolicySchema = z.enum(['open', 'allowlist', 'disabled']);
 const ReconnectSchema = z.object({
@@ -165,7 +166,7 @@ export type TelegramAccountConfig = {
 };
 
 export function getGatewayConfigPath(overridePath?: string): string {
-  return overridePath ?? process.env.ANTOINE_GATEWAY_CONFIG ?? DEFAULT_GATEWAY_PATH;
+  return overridePath ?? process.env.ANTOINE_GATEWAY_CONFIG ?? DEFAULT_GATEWAY_PATH();
 }
 
 export function loadGatewayConfig(overridePath?: string): GatewayConfig {

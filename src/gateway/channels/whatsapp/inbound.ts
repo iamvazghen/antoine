@@ -16,9 +16,10 @@ import { resolveJidToPhoneJid, type LidLookup } from './lid.js';
 import { appendFileSync } from 'node:fs';
 import { antoinePath } from '../../../utils/paths.js';
 
-const LOG_PATH = antoinePath('gateway-debug.log');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const LOG_PATH = () => antoinePath('gateway-debug.log');
 function debugLog(msg: string) {
-  appendFileSync(LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
+  appendFileSync(LOG_PATH(), `${new Date().toISOString()} ${msg}\n`);
 }
 
 function extractMentionedJids(message: WAMessage): string[] {

@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { HEARTBEAT_OK_TOKEN } from './suppression.js';
 import { antoinePath } from '../../utils/paths.js';
 
-const HEARTBEAT_MD_PATH = antoinePath('HEARTBEAT.md');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const HEARTBEAT_MD_PATH = () => antoinePath('HEARTBEAT.md');
 
 const DEFAULT_CHECKLIST = `- Major index moves (S&P 500, NASDAQ, Dow) — alert if any move more than 2% in a session
 - Breaking financial news — major earnings surprises, Fed announcements, significant market events`;
@@ -13,7 +14,7 @@ const DEFAULT_CHECKLIST = `- Major index moves (S&P 500, NASDAQ, Dow) — alert 
  */
 export async function loadHeartbeatDocument(): Promise<string | null> {
   try {
-    return await readFile(HEARTBEAT_MD_PATH, 'utf-8');
+    return await readFile(HEARTBEAT_MD_PATH(), 'utf-8');
   } catch {
     return null;
   }

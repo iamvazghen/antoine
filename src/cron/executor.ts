@@ -17,10 +17,11 @@ import { saveCronStore } from './store.js';
 import { computeNextRunAtMs } from './schedule.js';
 import type { ActiveHours, CronJob, CronStore } from './types.js';
 
-const LOG_PATH = antoinePath('gateway-debug.log');
+// ponytail: lazy so $ANTOINE_HOME set after module load still counts.
+const LOG_PATH = () => antoinePath('gateway-debug.log');
 
 function debugLog(msg: string) {
-  appendFileSync(LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
+  appendFileSync(LOG_PATH(), `${new Date().toISOString()} ${msg}\n`);
 }
 
 // Per-job suppression state (in memory, resets on process restart)
