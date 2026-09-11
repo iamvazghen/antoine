@@ -130,21 +130,53 @@ To press Enter:
 `.trim();
 
 /**
+ * Why a browser launch is impossible in this process, or null when it should work.
+ *
+ * Playwright drives the browser over an extra stdio pipe. Bun on Windows does
+ * not give a child process one, so the launch handshake never completes - and
+ * the `timeout` option does not fire either: a measured attempt sat there for
+ * twenty minutes. Both usual escapes fail the same way, `--remote-debugging-port`
+ * and `channel: 'chromium'`.
+ *
+ * Measured on this checkout, same machine, same browser build: 587ms under
+ * Node, never under Bun. The note this replaces blamed a Windows ACL denying
+ * the renderer sandbox access to chrome.exe, which is wrong and is why it went
+ * unfixed - the gateway and the VPS run under tsx/Node and the tool works there.
+ *
+ * ponytail: refuse in 0ms instead of hanging the turn. ANTOINE_BROWSER_FORCE=1
+ * overrides it, for when Bun gains the missing pipe.
+ */
+export function browserLaunchBlockReason(
+  runtime: { isBun: boolean; platform: string; force: boolean },
+): string | null {
+  if (runtime.force) return null;
+  if (!runtime.isBun || runtime.platform !== 'win32') return null;
+  return (
+    'cannot launch under Bun on Windows: Playwright needs an extra stdio pipe that Bun does not ' +
+    'provide there, so the launch never completes. Use web_fetch for page content, or run Antoine ' +
+    'under Node (`npx tsx src/index.tsx`). Set ANTOINE_BROWSER_FORCE=1 to attempt it anyway.'
+  );
+}
+
+/**
  * Ensure browser and page are initialized.
  *
  * Headless by default. The comment here used to say headless while the code
  * passed `headless: false`, which opens a visible window - it timed out after
  * 180s locally and cannot work at all on the VPS, where Antoine actually runs
  * and there is no display. Set ANTOINE_BROWSER_HEADFUL=1 to watch it work
- * while debugging on a desktop.
- *
- * Verified headless on the VPS (Example Domain in 718ms). On this Windows
- * checkout the launch handshake times out because the renderer sandbox is
- * denied access to chrome.exe (0x5) - a local ACL problem, not a code one, so
- * a browser failure on Windows says nothing about production.
+ * while debugging on a desktop. Verified headless on the VPS (Example Domain
+ * in 718ms).
  */
 async function ensureBrowser(): Promise<Page> {
   if (!browser) {
+    const blocked = browserLaunchBlockReason({
+      isBun: typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined',
+      platform: process.platform,
+      force: process.env.ANTOINE_BROWSER_FORCE === '1',
+    });
+    if (blocked) throw new Error(blocked);
+
     const headful = process.env.ANTOINE_BROWSER_HEADFUL === '1';
     browser = await chromium.launch({ headless: !headful });
   }

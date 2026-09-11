@@ -144,9 +144,22 @@ console.log('--- dispatch');
 await step('skill', { skill: 'definitely-not-a-skill' }, has('not found'), 'unknown skill errors');
 
 console.log('--- browser');
-await step('browser', { action: 'navigate', url: 'https://example.com' }, noError);
-await step('browser', { action: 'snapshot', maxChars: 400 }, has('example'), 'page content');
-await step('browser', { action: 'close' }, noError);
+// Playwright cannot launch under Bun on Windows. That is an environment limit,
+// not a defect, and reporting it as a failure made this script exit 1 on every
+// local run - which is how a real failure gets ignored.
+const { browserLaunchBlockReason } = await import('../tools/browser/browser.js');
+const browserBlocked = browserLaunchBlockReason({
+  isBun: typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined',
+  platform: process.platform,
+  force: process.env.ANTOINE_BROWSER_FORCE === '1',
+});
+if (browserBlocked) {
+  record('browser', 'SKIP', browserBlocked);
+} else {
+  await step('browser', { action: 'navigate', url: 'https://example.com' }, noError);
+  await step('browser', { action: 'snapshot', maxChars: 400 }, has('example'), 'page content');
+  await step('browser', { action: 'close' }, noError);
+}
 
 if (expensive) {
   console.log('--- expensive (LLM-backed)');
