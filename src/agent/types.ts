@@ -1,6 +1,11 @@
-import type { GroupContext } from './prompts.js';
 import type { MessageQueue } from '../utils/message-queue.js';
 import type { Question, UserAnswers } from '../tools/ask-user-question/types.js';
+
+export type GroupContext = {
+  groupName?: string;
+  membersList?: string;
+  activationMode: 'mention';
+};
 
 // ============================================================================
 // Channel Profiles

@@ -9,7 +9,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { StructuredToolInterface } from '@langchain/core/tools';
 import { Runnable } from '@langchain/core/runnables';
 import { z } from 'zod';
-import { DEFAULT_SYSTEM_PROMPT } from '@/agent/prompts';
+import { DEFAULT_SYSTEM_PROMPT } from '@/agent/default-prompt';
 import type { TokenUsage } from '@/agent/types';
 import { logger } from '@/utils';
 import { classifyError, isNonRetryableError } from '@/utils/errors';
