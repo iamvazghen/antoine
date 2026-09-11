@@ -1,7 +1,7 @@
 /**
  * Priority-based message queue for mid-run user input injection.
  *
- * When the agent is busy, input surfaces (CLI, WhatsApp) enqueue messages
+ * When the agent is busy, input surfaces (CLI, Telegram) enqueue messages
  * instead of dropping or serializing them. The agent drains the queue
  * between tool rounds, batching multiple messages into a single follow-up.
  */
@@ -15,7 +15,7 @@ export interface QueuedMessage {
   priority: QueuePriority;
   /** Timestamp (Date.now()) when the message was enqueued. */
   enqueuedAt: number;
-  /** Optional source identifier (e.g. 'cli', 'whatsapp:session-key'). */
+  /** Optional source identifier (e.g. 'cli', 'gateway:session-key'). */
   source?: string;
 }
 

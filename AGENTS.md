@@ -2,7 +2,7 @@
 
 - Repo: https://github.com/iamvazghen/antoine
 - Antoine is a CLI-based AI agent for deep financial research, built with TypeScript, `@mariozechner/pi-tui` (terminal UI), and LangChain.
-- Reachable three ways: the interactive CLI, and optional WhatsApp + Telegram gateways.
+- Reachable two ways: the interactive CLI, and an optional Telegram gateway.
 
 ## Project Structure
 
@@ -15,7 +15,7 @@
   - Tools: `src/tools/` (finance, search, browser, fetch, memory, cron, subagent, skill)
   - Finance tools: `src/tools/finance/` (prices, fundamentals, filings, insider trades, FX rates, macro indicators, etc.)
   - Search tools: `src/tools/search/` (Exa -> Perplexity -> Tavily -> LangSearch)
-  - Gateway/channels: `src/gateway/` (WhatsApp + Telegram)
+  - Gateway/channels: `src/gateway/` (Telegram)
   - Browser: `src/tools/browser/` (Playwright-based web scraping)
   - Skills: `src/skills/` (SKILL.md-based extensible workflows, e.g. DCF valuation)
   - Utils: `src/utils/` (env, config, caching, token estimation, markdown tables)
@@ -73,7 +73,7 @@
 ## Channels (Gateway)
 
 - Gateway entry: `src/gateway/index.ts` (`run` | `login` | `telegram`). Bootstrap: `src/gateway/gateway.ts`.
-- Channels under `src/gateway/channels/`: `whatsapp/` (Baileys) and `telegram/` (Bot API long-polling).
+- Channels under `src/gateway/channels/`: `telegram/` (Bot API long-polling).
 - Add a channel by implementing `ChannelPlugin` (`channels/types.ts`) and registering a manager in `startGateway`.
 - Config + per-account resolution: `src/gateway/config.ts` (`.antoine/gateway.json`).
 

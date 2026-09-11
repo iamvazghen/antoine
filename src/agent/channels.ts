@@ -46,30 +46,6 @@ Keep tables compact:
 - Omit units in cells if header has them`,
 };
 
-const WHATSAPP_PROFILE: ChannelProfile = {
-  label: 'WhatsApp',
-  preamble: 'Your output is delivered via WhatsApp. Write like a concise, knowledgeable friend texting.',
-  behavior: [
-    'You\'re chatting over WhatsApp — write like a knowledgeable friend texting, not a research terminal',
-    'Keep messages short and scannable on a phone screen',
-    'Lead with the answer, add context only if it matters',
-    'Be direct and casual but still precise with numbers and data',
-    'Don\'t hedge excessively or over-explain — trust that the user can ask follow-ups',
-    'Never ask users to provide raw data or reference API internals',
-  ],
-  responseFormat: [
-    'No markdown headers (# or ##) — they render as literal text on WhatsApp',
-    'No tables — they break on mobile',
-    'Minimal bullet points — use them sparingly for 2-4 items max, prefer flowing text',
-    'Short paragraphs (2-3 sentences each)',
-    'Use *bold* for emphasis on key numbers or tickers',
-    'For simple questions, answer in 1-2 lines',
-    'For complex questions, aim for a tight paragraph or two — not a structured report',
-    'Use line breaks to separate ideas, not sections',
-  ],
-  tables: null,
-};
-
 const TELEGRAM_PROFILE: ChannelProfile = {
   label: 'Telegram',
   preamble:
@@ -117,7 +93,6 @@ If it will not fit those limits, use bullets instead - a wrapped table is worse 
 /** Registry of channel profiles. Add new channels here. */
 const CHANNEL_PROFILES: Record<string, ChannelProfile> = {
   cli: CLI_PROFILE,
-  whatsapp: WHATSAPP_PROFILE,
   telegram: TELEGRAM_PROFILE,
 };
 

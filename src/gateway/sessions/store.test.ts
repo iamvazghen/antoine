@@ -16,17 +16,17 @@ describe('session store', () => {
       const storePath = resolveSessionStorePath('agentA');
       upsertSessionMeta({
         storePath,
-        sessionKey: 'agent:agentA:whatsapp:default:direct:+15551234567',
-        channel: 'whatsapp',
+        sessionKey: 'agent:agentA:telegram:default:direct:+15551234567',
+        channel: 'telegram',
         to: '+15551234567',
         accountId: 'default',
         agentId: 'agentA',
       });
       const store = loadSessionStore(storePath);
-      const entry = store['agent:agentA:whatsapp:default:direct:+15551234567'];
+      const entry = store['agent:agentA:telegram:default:direct:+15551234567'];
       expect(entry).toBeDefined();
       expect(entry.lastAgentId).toBe('agentA');
-      expect(entry.lastChannel).toBe('whatsapp');
+      expect(entry.lastChannel).toBe('telegram');
     } finally {
       delete process.env.ANTOINE_SESSIONS_DIR;
       rmSync(dir, { recursive: true, force: true });

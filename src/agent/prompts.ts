@@ -175,9 +175,9 @@ export function buildGroupSection(ctx: GroupContext): string {
   const lines: string[] = ['## Group Chat'];
   lines.push('');
   if (ctx.groupName) {
-    lines.push(`You are participating in the WhatsApp group "${ctx.groupName}".`);
+    lines.push(`You are participating in the group chat "${ctx.groupName}".`);
   } else {
-    lines.push('You are participating in a WhatsApp group chat.');
+    lines.push('You are participating in a group chat.');
   }
   lines.push('You were activated because someone @-mentioned you.');
   lines.push('');
@@ -204,7 +204,7 @@ export function buildGroupSection(ctx: GroupContext): string {
  * Build the system prompt for the agent.
  * @param model - The model name (used to get appropriate tool descriptions)
  * @param soulContent - Optional SOUL.md identity content
- * @param channel - Delivery channel (e.g., 'whatsapp', 'cli') — selects formatting profile
+ * @param channel - Delivery channel (e.g., 'telegram', 'cli') — selects formatting profile
  */
 export function buildSystemPrompt(
   model: string,

@@ -24,7 +24,7 @@ Ships configured for **MiniMax M2.5**, and wired to 10 LLM providers (OpenAI · 
 - [Slash commands](#slash-commands)
 - [Evaluate](#evaluate)
 - [Debug](#debug)
-- [WhatsApp + Telegram gateways](#whatsapp--telegram-gateways)
+- [Telegram gateway](#telegram-gateway)
 - [Deploying as a service](#deploying-as-a-service)
 - [Provider health check](#provider-health-check)
 - [Cost model](#cost-model)
@@ -116,7 +116,7 @@ and the result says so; one without a US line names the ADR to use instead.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Antoine CLI/WhatsApp/Telegram                                     │
+│ Antoine CLI/Telegram                                              │
 │   • pi-tui terminal UI (themeable, source chips, watchlist,        │
 │     command palette, status bar, cost-cap overlay, diff viewer)    │
 │   • Slash commands (/model /theme /cost /watch /run_debate …)       │
@@ -241,7 +241,7 @@ The agent adapts its response format per delivery channel.
 | Channel | Style |
 |---|---|
 | CLI | Compact, lead with the answer, markdown tables OK, citations inline |
-| WhatsApp | Casual texting tone, no headers, no tables, short paragraphs |
+| Telegram | Casual texting tone, no headers, no tables, short paragraphs |
 
 When the user enables another channel, set `channel` in the `AgentConfig` — the system prompt pulls the matching profile.
 
@@ -344,15 +344,15 @@ This makes it easy to inspect exactly what data the agent pulled and how it inte
 
 ---
 
-## WhatsApp + Telegram gateways
+## Telegram gateway
 
 ```bash
-bun run gateway:login    # scan WhatsApp QR
 bun run gateway:telegram # paste BotFather token, set DM allowlist
-bun run gateway          # start both gateways
+bun run gateway          # start the gateway
 ```
 
-Messages you send to yourself over WhatsApp are processed by Antoine and replied to in the same chat. Telegram uses Bot API long-polling. Both channels use the WhatsApp / Telegram profile (no headers, no tables).
+Telegram uses Bot API long-polling. In groups the bot replies only when mentioned
+or replied to. The channel uses the Telegram profile (no headers, no tables).
 
 The gateway process also runs the **cron scheduler**. Scheduled reviews only fire
 while it is alive, which is the reason to run it as a service rather than in a
@@ -574,7 +574,6 @@ This project integrates with the following third-party data providers. Each prov
 | Tavily | https://tavily.com/terms |
 | LangSearch | https://langsearch.com/terms |
 | X / Twitter | https://twitter.com/en/tos |
-| Baileys (WhatsApp) | MIT License — https://github.com/WhiskeySockets/Baileys |
 | Playwright (browser automation) | Apache 2.0 — https://playwright.dev/ |
 | LangChain (LLM framework) | MIT License |
 | LangSmith (eval tracing) | https://smith.langchain.com/terms |

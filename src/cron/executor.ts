@@ -5,11 +5,9 @@ import {
   HEARTBEAT_OK_TOKEN,
   type SuppressionState,
 } from '../gateway/heartbeat/suppression.js';
-import { assertOutboundAllowed, sendMessageWhatsApp } from '../gateway/channels/whatsapp/index.js';
 import { sendMessageTelegram } from '../gateway/channels/telegram/index.js';
 import { loadGatewayConfig, resolveTelegramAccount } from '../gateway/config.js';
 import { resolveSessionStorePath, loadSessionStore, type SessionEntry } from '../gateway/sessions/store.js';
-import { cleanMarkdownForWhatsApp } from '../gateway/utils.js';
 import { getSetting } from '../utils/config.js';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../model/llm.js';
 import { antoinePath } from '../utils/paths.js';
@@ -93,7 +91,7 @@ function findTargetSession(): SessionEntry | null {
 
 /**
  * Execute a single cron job: run isolated agent, evaluate suppression,
- * deliver via WhatsApp, apply fulfillment mode, update state.
+ * deliver via Telegram, apply fulfillment mode, update state.
  */
 export async function executeCronJob(
   job: CronJob,
@@ -150,7 +148,7 @@ export async function executeCronJob(
       modelProvider,
       maxIterations: 6,
       isolatedSession: true,
-      channel: session.lastChannel ?? 'whatsapp',
+      channel: session.lastChannel ?? 'telegram',
     })).answer;
   } catch (err) {
     handleJobError(job, store, err, startedAt);
@@ -176,7 +174,7 @@ export async function executeCronJob(
 
     // Deliver on whichever channel the session actually came in on.
     await deliver(session, suppResult.cleanedText);
-    debugLog(`[cron] job ${job.id}: delivered to ${session.lastTo} via ${session.lastChannel ?? 'whatsapp'}`);
+    debugLog(`[cron] job ${job.id}: delivered to ${session.lastTo} via ${session.lastChannel ?? 'telegram'}`);
 
     // Update suppression state for duplicate detection
     suppState.lastMessageText = suppResult.cleanedText;
@@ -197,59 +195,33 @@ export async function executeCronJob(
 }
 
 /**
- * Channel-aware outbound guard for scheduled jobs.
- *
- * This used to call the WhatsApp guard unconditionally, which parses the
- * recipient as a WhatsApp JID and checks it against the WhatsApp allowlist. A
- * Telegram chat id can never satisfy that, so every scheduled job destined for
- * Telegram was dropped with `outbound blocked, skipping` - the review ran, the
- * agent produced an answer, and nothing was ever delivered.
+ * Outbound guard for scheduled jobs. An empty allowlist means the channel was
+ * never restricted; a populated one must contain this recipient.
  */
 function assertCronOutboundAllowed(session: SessionEntry): void {
   const to = session.lastTo;
   if (!to) throw new Error('no recipient on session');
 
-  if ((session.lastChannel ?? 'whatsapp') === 'telegram') {
-    const account = resolveTelegramAccount(loadGatewayConfig(), session.lastAccountId ?? 'default');
-    const allowFrom = account.allowFrom ?? [];
-    // An empty allowlist means the channel was never restricted; a populated
-    // one must contain this recipient.
-    if (allowFrom.length > 0 && !allowFrom.includes(String(to))) {
-      throw new Error(`telegram recipient ${to} is not in allowFrom`);
-    }
-    return;
+  const account = resolveTelegramAccount(loadGatewayConfig(), session.lastAccountId ?? 'default');
+  const allowFrom = account.allowFrom ?? [];
+  if (allowFrom.length > 0 && !allowFrom.includes(String(to))) {
+    throw new Error(`telegram recipient ${to} is not in allowFrom`);
   }
-
-  assertOutboundAllowed({ to, accountId: session.lastAccountId });
 }
 
-/**
- * Send a cron result on the channel the session was last seen on. Previously
- * this was hardcoded to WhatsApp, so a Telegram user got scheduled jobs that
- * ran, logged `ok`, and delivered nothing.
- */
+/** Send a cron result to the Telegram chat the session was last seen on. */
 async function deliver(session: SessionEntry, text: string): Promise<void> {
-  const channel = session.lastChannel ?? 'whatsapp';
   const to = session.lastTo;
   const accountId = session.lastAccountId;
   if (!to || !accountId) {
     throw new Error('session has no delivery target');
   }
 
-  if (channel === 'telegram') {
-    const account = resolveTelegramAccount(loadGatewayConfig(), accountId);
-    if (!account?.botToken) {
-      throw new Error(`telegram account ${accountId} has no bot token`);
-    }
-    await sendMessageTelegram({ botToken: account.botToken, chatId: to, text });
-    return;
+  const account = resolveTelegramAccount(loadGatewayConfig(), accountId);
+  if (!account?.botToken) {
+    throw new Error(`telegram account ${accountId} has no bot token`);
   }
-
-  await sendMessageWhatsApp({
-    to,
-    body: cleanMarkdownForWhatsApp(text),
-    accountId,
-  });
+  await sendMessageTelegram({ botToken: account.botToken, chatId: to, text });
 }
 
 function scheduleNextRun(job: CronJob, store: CronStore): void {

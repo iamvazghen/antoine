@@ -6,37 +6,37 @@ describe('resolveRoute', () => {
     const route = resolveRoute({
       cfg: {
         gateway: { accountId: 'default', logLevel: 'info' },
-        channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] }, telegram: { enabled: true, accounts: {}, allowFrom: [] } },
+        channels: { telegram: { enabled: true, accounts: {}, allowFrom: [] } },
         bindings: [],
       },
-      channel: 'whatsapp',
+      channel: 'telegram',
       accountId: 'default',
-      peer: { kind: 'direct', id: '+15550001111' },
+      peer: { kind: 'direct', id: '100200300' },
     });
     expect(route.agentId).toBe('default');
     expect(route.matchedBy).toBe('default');
-    expect(route.sessionKey).toContain('whatsapp');
+    expect(route.sessionKey).toContain('telegram');
   });
 
   test('matches peer binding first', () => {
     const route = resolveRoute({
       cfg: {
         gateway: { accountId: 'default', logLevel: 'info' },
-        channels: { whatsapp: { enabled: true, accounts: {}, allowFrom: [] }, telegram: { enabled: true, accounts: {}, allowFrom: [] } },
+        channels: { telegram: { enabled: true, accounts: {}, allowFrom: [] } },
         bindings: [
           {
             agentId: 'alpha',
             match: {
-              channel: 'whatsapp',
+              channel: 'telegram',
               peerKind: 'direct',
-              peerId: '+15551234567',
+              peerId: '100200300',
             },
           },
         ],
       },
-      channel: 'whatsapp',
+      channel: 'telegram',
       accountId: 'default',
-      peer: { kind: 'direct', id: '+15551234567' },
+      peer: { kind: 'direct', id: '100200300' },
     });
     expect(route.agentId).toBe('alpha');
     expect(route.matchedBy).toBe('binding.peer');

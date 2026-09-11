@@ -7,7 +7,7 @@ import type { CronJob, CronSchedule } from '../../cron/types.js';
 
 export const CRON_TOOL_DESCRIPTION = `
 Manage scheduled/recurring tasks (cron jobs) that run automatically.
-Jobs run as isolated agent turns with full tool access, delivering results via WhatsApp.
+Jobs run as isolated agent turns with full tool access, delivering results via Telegram.
 
 ## When to Use
 

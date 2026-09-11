@@ -16,7 +16,7 @@ export type GroupContext = {
  * Add new entries to CHANNEL_PROFILES in prompts.ts when adding channels.
  */
 export interface ChannelProfile {
-  /** Human-readable label used in the system prompt preamble (e.g., "CLI", "WhatsApp") */
+  /** Human-readable label used in the system prompt preamble (e.g., "CLI", "Telegram") */
   label: string;
   /** One-liner describing the output surface, injected after the date line */
   preamble: string;
@@ -52,7 +52,7 @@ export interface AgentConfig {
   maxIterations?: number;
   /** AbortSignal for cancelling agent execution */
   signal?: AbortSignal;
-  /** Delivery channel (e.g., 'whatsapp', 'cli') — affects response formatting */
+  /** Delivery channel (e.g., 'telegram', 'cli') — affects response formatting */
   channel?: string;
   /** Group chat context — when set, adds group-specific instructions to system prompt */
   groupContext?: GroupContext;

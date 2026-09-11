@@ -83,7 +83,7 @@ export class Agent {
       ? allTools.filter(t => config.toolAllowlist!.includes(t.name))
       : allTools;
     // CLI-only tools (interactive prompts) are dropped on non-CLI channels
-    // (WhatsApp/gateway) and in headless runs, where there is no user at a keyboard.
+    // (Telegram/gateway) and in headless runs, where there is no user at a keyboard.
     const isCli = !config.channel || config.channel === 'cli';
     if (!isCli) {
       tools = tools.filter(t => !CLI_ONLY_TOOLS.has(t.name));

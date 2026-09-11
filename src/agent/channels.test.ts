@@ -12,7 +12,7 @@ describe('channel profiles', () => {
   });
 
   test('every delivery channel has a profile', () => {
-    for (const channel of ['cli', 'whatsapp', 'telegram']) {
+    for (const channel of ['cli', 'telegram']) {
       expect(getChannelProfile(channel).label.toLowerCase()).toContain(
         channel === 'cli' ? 'cli' : channel,
       );
@@ -24,10 +24,6 @@ describe('channel profiles', () => {
     for (const topic of ['bold', 'italic', 'table', 'emoji', 'link']) {
       expect(format).toContain(topic);
     }
-  });
-
-  test('whatsapp still forbids tables', () => {
-    expect(getChannelProfile('whatsapp').tables).toBeNull();
   });
 
   test('an unknown channel falls back rather than throwing', () => {

@@ -3,7 +3,7 @@ import { InMemoryChatHistory } from '../utils/in-memory-chat-history.js';
 import { createMessageQueue, type MessageQueue, type QueuePriority } from '../utils/message-queue.js';
 import { HEARTBEAT_OK_TOKEN } from './heartbeat/suppression.js';
 import type { AgentEvent } from '../agent/types.js';
-import type { GroupContext } from '../agent/prompts.js';
+import type { GroupContext } from '../agent/types.js';
 
 type SessionState = {
   history: InMemoryChatHistory;
@@ -52,7 +52,7 @@ export function enqueueForSession(
     text,
     priority,
     enqueuedAt: Date.now(),
-    source: `whatsapp:${sessionKey}`,
+    source: `gateway:${sessionKey}`,
   });
 }
 
