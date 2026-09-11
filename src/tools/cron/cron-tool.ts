@@ -3,7 +3,6 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { loadCronStore, saveCronStore } from '../../cron/store.js';
 import { computeNextRunAtMs } from '../../cron/schedule.js';
-import { executeCronJob } from '../../cron/executor.js';
 import type { CronJob, CronSchedule } from '../../cron/types.js';
 
 export const CRON_TOOL_DESCRIPTION = `
@@ -192,6 +191,9 @@ export const cronTool = new DynamicStructuredTool({
         const job = store.jobs.find((j) => j.id === input.jobId);
         if (!job) return `Error: job ${input.jobId} not found.`;
 
+        // Dynamic: the executor pulls in the gateway agent runner, which pulls
+        // in the agent, which pulls in this registry. Only "run now" needs it.
+        const { executeCronJob } = await import('../../cron/executor.js');
         await executeCronJob(job, store, {});
         return `Job "${job.name}" executed. Status: ${job.state.lastRunStatus ?? 'unknown'}`;
       }
