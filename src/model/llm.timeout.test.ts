@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { DEFAULT_LLM_TIMEOUT_MS } from './llm.js';
 import { readFileSync } from 'node:fs';
 

@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { HelpPanelComponent } from './help-panel.js';
 import { ThinkingBlockComponent } from './thinking-block.js';
 import { IntroComponent } from './intro.js';

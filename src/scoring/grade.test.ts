@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { band, cheapVsOwnHistory, maxDrawdown, blend, FACTORS } from './factors.js';
 import { gradeBundle, verdictFor } from './grade.js';
 import type { TickerBundle } from './data.js';

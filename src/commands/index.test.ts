@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import {
   SLASH_COMMANDS,
   CATEGORY_ORDER,

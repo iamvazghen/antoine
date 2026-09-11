@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { AnswerBoxComponent } from './answer-box.js';
 import { CostCapOverlayComponent } from './cost-cap-overlay.js';
 import { DebugPanelComponent } from './debug-panel.js';

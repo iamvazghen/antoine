@@ -1,3 +1,4 @@
+import { describe, test, expect, afterEach } from 'bun:test';
 import { checkApiKeyExists } from './env.js';
 
 /**

@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { _ecbKnownSeriesForTest as KNOWN_SERIES } from './ecb.js';
 
 describe('ECB known series', () => {

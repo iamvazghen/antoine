@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { getChannelProfile } from './channels.js';
 
 describe('channel profiles', () => {

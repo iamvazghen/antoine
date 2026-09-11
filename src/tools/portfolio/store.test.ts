@@ -1,3 +1,4 @@
+import { describe, test, expect, afterAll } from 'bun:test';
 import { PortfolioStore } from './store.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';

@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { markdownToTelegramHtml, chunkHtml, stripHtml, renderThinkingBlock } from './format.js';
 
 describe('markdownToTelegramHtml', () => {

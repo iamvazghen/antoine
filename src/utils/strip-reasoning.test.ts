@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { stripReasoning, extractReasoning } from './strip-reasoning.js';
 
 describe('stripReasoning', () => {

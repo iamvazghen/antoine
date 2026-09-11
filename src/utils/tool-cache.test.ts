@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach } from 'bun:test';
 import { getToolCacheEntry, setToolCacheEntry, clearToolCache, getToolCacheStats } from './tool-cache.js';
 
 describe('tool-cache', () => {

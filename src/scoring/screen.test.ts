@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { evaluate, listScreenMetrics, SCREEN_METRICS, type ScreenFilter } from './screen.js';
 import type { TickerBundle } from './data.js';
 

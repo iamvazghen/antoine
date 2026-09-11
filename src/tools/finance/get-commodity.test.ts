@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { _resolveCommodityForTest as resolveCommodity } from './get-commodity.js';
 
 describe('commodity alias resolution', () => {

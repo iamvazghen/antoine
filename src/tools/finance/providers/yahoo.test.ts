@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'bun:test';
 import { toYahooSymbol, isYahooSupported, YAHOO_ONLY_EXCHANGES } from './yahoo.js';
 
 describe('toYahooSymbol', () => {
